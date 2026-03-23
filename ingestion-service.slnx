@@ -1,5 +1,6 @@
 <Solution>
-  <Project Path="ingestion-service/Simcag.IngestionService.Api.csproj" />
+  <Project Path="../shared/shared.csproj" />
+  <Project Path="Simcag.IngestionService.Api/Simcag.IngestionService.Api.csproj" />
   <Project Path="Simcag.IngestionService.Application/Simcag.IngestionService.Application.csproj" />
   <Project Path="Simcag.IngestionService.Domain/Simcag.IngestionService.Domain.csproj" />
   <Project Path="Simcag.IngestionService.Infrastructure/Simcag.IngestionService.Infrastructure.csproj" />
