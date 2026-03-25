@@ -3,6 +3,10 @@
 # =========================
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
 WORKDIR /app
+
+# 🔥 importante pra funcionar corretamente em container
+ENV ASPNETCORE_URLS=http://+:8080
+
 EXPOSE 8080
 
 # =========================
@@ -14,7 +18,7 @@ WORKDIR /src
 
 COPY . .
 
-# 🔥 Caminho real do seu projeto API
+# Caminho do projeto
 WORKDIR "/src/ingestion-service/Simcag.IngestionService.Api"
 
 RUN dotnet restore "Simcag.IngestionService.Api.csproj"
@@ -26,7 +30,10 @@ RUN dotnet build "Simcag.IngestionService.Api.csproj" -c $BUILD_CONFIGURATION -o
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
 
-RUN dotnet publish "Simcag.IngestionService.Api.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "Simcag.IngestionService.Api.csproj" \
+    -c $BUILD_CONFIGURATION \
+    -o /app/publish \
+    /p:UseAppHost=false
 
 # =========================
 # Final
