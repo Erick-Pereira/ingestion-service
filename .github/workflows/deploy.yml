@@ -1,56 +1,34 @@
-name: Build and Push Ingestion Service
+name: Build and Push Docker
 
 on:
   push:
     branches:
       - main
-    paths:
-      - 'services/ingestion-service/**'
-      - '.github/workflows/deploy.yml'
 
 jobs:
-  build:
+  build-and-push:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      # 🔥 Login Docker Hub
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-
-      # 🔥 Build and push Docker image
       - name: Build and push Docker image
         id: build_docker_image
         uses: docker/build-push-action@v5
         with:
+          push: true
+          tags: shelow/potato-monitor:latest
           context: services/ingestion-service
           file: services/ingestion-service/Dockerfile
-          push: true
-          tags: |
-            ${{ secrets.DOCKER_USERNAME }}/simcag-ingestion-service:latest
-            ${{ secrets.DOCKER_USERNAME }}/simcag-ingestion-service:${{ github.sha }}
-          args:
-            RABBITMQ_HOST=${{ secrets.RABBITMQ_HOST }}
-            REDIS_HOST=${{ secrets.REDIS_HOST }}
-
-      # 🔥 Set Environment Variables
-      - name: Set Environment Variables
-        run: |
-          echo "RABBITMQ_HOST=${{ secrets.RABBITMQ_HOST }}" >> $GITHUB_ENV
-          echo "REDIS_HOST=${{ secrets.REDIS_HOST }}" >> $GITHUB_ENV
 
   test:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      # 🔥 Run Tests (If necessary)
       - name: Run tests
         run: dotnet test services/ingestion-service/tests
