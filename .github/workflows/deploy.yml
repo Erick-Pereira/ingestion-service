@@ -35,8 +35,8 @@ jobs:
             ${{ secrets.DOCKER_USERNAME }}/simcag-ingestion-service:latest
             ${{ secrets.DOCKER_USERNAME }}/simcag-ingestion-service:${{ github.sha }}
           args:
-            RABBITMQ_HOST: ${{ secrets.RABBITMQ_HOST }}
-            REDIS_HOST: ${{ secrets.REDIS_HOST }}
+            RABBITMQ_HOST=${{ secrets.RABBITMQ_HOST }}
+            REDIS_HOST=${{ secrets.REDIS_HOST }}
 
       # 🔥 Set Environment Variables
       - name: Set Environment Variables
