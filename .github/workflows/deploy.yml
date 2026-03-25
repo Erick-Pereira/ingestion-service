@@ -24,7 +24,7 @@ jobs:
           push: true
           tags: shelow/ingestion-service:latest
           context: .
-          file: ingestion-service/Simcag.IngestionService.Api/Dockerfilee
+          file: ./ingestion-service/Simcag.IngestionService.Api/Dockerfile
 
   test:
     runs-on: ubuntu-latest
