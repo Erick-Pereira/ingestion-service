@@ -22,9 +22,9 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           push: true
-          tags: shelow/potato-monitor:latest
-          context: services/ingestion-service
-          file: services/ingestion-service/Dockerfile
+          tags: shelow/ingestion-service:latest
+          context: .
+          file: ingestion-service/Simcag.IngestionService.Api/Dockerfilee
 
   test:
     runs-on: ubuntu-latest
