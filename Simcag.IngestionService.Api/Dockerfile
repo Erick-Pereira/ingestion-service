@@ -18,7 +18,7 @@ WORKDIR /src
 COPY . .
 
 # Configure NuGet to use GitHub Packages
-RUN dotnet nuget add source https://nuget.pkg.github.com/Erick-Pereira/index.json --name github --username Erick-Pereira --password $GITHUB_TOKEN --store-password-in-clear-text
+RUN dotnet nuget add source https://nuget.pkg.github.com/Erick-Pereira/index.json --name github --username Erick-Pereira --password $TOKEN --store-password-in-clear-text
 
 # ✅ CAMINHO CORRIGIDO - Entrar na pasta do projeto
 WORKDIR /src/Simcag.IngestionService.Api
