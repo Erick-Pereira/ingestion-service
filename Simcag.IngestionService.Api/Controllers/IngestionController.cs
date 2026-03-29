@@ -1,4 +1,4 @@
-﻿using shared.Contracts;
+﻿using shared.Events;
 using Simcag.IngestionService.Application.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;

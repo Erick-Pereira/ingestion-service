@@ -1,6 +1,6 @@
 ﻿using System.Threading.Tasks;
-using shared.Contracts;
 using Microsoft.Extensions.Logging;
+using shared.Events;
 using Simcag.IngestionService.Infrastructure.Messaging;
 
 namespace Simcag.IngestionService.Application.Services

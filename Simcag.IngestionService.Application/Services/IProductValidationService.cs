@@ -1,4 +1,6 @@
-using shared.Contracts;
+
+
+using shared.Events;
 
 namespace Simcag.IngestionService.Application.Services
 {

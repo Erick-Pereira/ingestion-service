@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using shared.Contracts;
+using shared.Events;
 
 namespace Simcag.IngestionService.Application.Services
 {
