@@ -1,7 +1,6 @@
-// Infrastructure/IRabbitMqPublisher.cs
 using System.Threading.Tasks;
 
-namespace IngestionService.Infrastructure
+namespace Simcag.IngestionService.Infrastructure.Messaging
 {
     public interface IRabbitMqPublisher
     {

@@ -1,4 +1,3 @@
-using IngestionService.Infrastructure;
 using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 using System.Text;
@@ -13,28 +12,27 @@ namespace Simcag.IngestionService.Infrastructure.Messaging
         private readonly IModel _channel;
         private readonly ILogger<RabbitMqPublisher> _logger;
 
-        public RabbitMqPublisher(string hostName, ILogger<RabbitMqPublisher> logger)
-        {
-            try
-            {
-                var factory = new ConnectionFactory { HostName = hostName };
-                _connection = factory.CreateConnection();
-                _channel = _connection.CreateModel();
+public RabbitMqPublisher(string hostName, string userName, string password, int port, ILogger<RabbitMqPublisher> logger)
+{
+    _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-                // Declare the queue only once
-                _channel.QueueDeclare(queue: "price-events", durable: false, exclusive: false, autoDelete: false, arguments: null);
+    try
+    {
+        var factory = new ConnectionFactory { HostName = hostName, UserName = userName, Password = password, Port = port };
+        _connection = factory.CreateConnection();
+        _channel = _connection.CreateModel();
 
-                _logger.LogInformation("RabbitMQ connection established.");
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to establish RabbitMQ connection.");
-                throw;
-            }
+        // Declare the queue only once
+        _channel.QueueDeclare(queue: "price-events", durable: false, exclusive: false, autoDelete: false, arguments: null);
 
-            _logger = logger;
-        }
-
+        _logger.LogInformation("RabbitMQ connection established.");
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "Failed to establish RabbitMQ connection.");
+        throw;
+    }
+}
         public async Task PublishAsync<T>(string queueName, T message)
         {
             try
