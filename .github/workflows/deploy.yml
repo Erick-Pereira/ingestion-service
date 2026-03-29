@@ -34,7 +34,7 @@ jobs:
           push: true
           tags: shelow/ingestion-service:latest
           context: .
-          file: ingestion-service/Simcag.IngestionService.Api/Dockerfile
+          file: Simcag.IngestionService.Api/Dockerfile
           build-args: |
             TOKEN=${{ secrets.TOKEN }}
 
