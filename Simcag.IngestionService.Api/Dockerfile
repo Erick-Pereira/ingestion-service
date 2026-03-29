@@ -22,9 +22,10 @@ RUN dotnet nuget add source https://nuget.pkg.github.com/Erick-Pereira/index.jso
 
 # ✅ CAMINHO CORRIGIDO - Verificar se a pasta existe
 RUN if [ -d "Simcag.IngestionService.Api" ]; then \
-      WORKDIR /src/Simcag.IngestionService.Api; \
+      cd Simcag.IngestionService.Api; \
     else \
-      echo "Pasta Simcag.IngestionService.Api não encontrada, tentando caminhos alternativos..."; \
+      echo "Pasta Simcag.IngestionService.Api não encontrada, listando conteúdo:"; \
+      ls -la; \
       find . -name "*.csproj" -type f; \
       exit 1; \
     fi
