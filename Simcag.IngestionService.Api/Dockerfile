@@ -20,8 +20,14 @@ COPY . .
 # Configure NuGet to use GitHub Packages
 RUN dotnet nuget add source https://nuget.pkg.github.com/Erick-Pereira/index.json --name github --username Erick-Pereira --password $GITHUB_TOKEN --store-password-in-clear-text
 
-# ✅ CAMINHO CORRIGIDO
-WORKDIR /src/Simcag.IngestionService.Api
+# ✅ CAMINHO CORRIGIDO - Verificar se a pasta existe
+RUN if [ -d "Simcag.IngestionService.Api" ]; then \
+      WORKDIR /src/Simcag.IngestionService.Api; \
+    else \
+      echo "Pasta Simcag.IngestionService.Api não encontrada, tentando caminhos alternativos..."; \
+      find . -name "*.csproj" -type f; \
+      exit 1; \
+    fi
 
 # 🔥 melhor sem hardcode do csproj
 RUN dotnet restore
