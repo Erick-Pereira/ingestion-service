@@ -35,6 +35,8 @@ jobs:
           tags: shelow/ingestion-service:latest
           context: .
           file: ingestion-service/Simcag.IngestionService.Api/Dockerfile
+          build-args: |
+            GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
 
   test:
     runs-on: ubuntu-latest
