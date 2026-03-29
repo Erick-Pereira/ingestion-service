@@ -14,14 +14,14 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 
-# Copy ingestion-service projects (caminho relativo à raiz do repositório)
-COPY ingestion-service/ ./ingestion-service/
+# Copy all files from ingestion-service repository
+COPY . .
 
 # Configure NuGet to use GitHub Packages
 RUN dotnet nuget add source https://nuget.pkg.github.com/Erick-Pereira/index.json --name github --username Erick-Pereira --password $GITHUB_TOKEN --store-password-in-clear-text
 
 # ✅ CAMINHO CORRIGIDO
-WORKDIR /src/ingestion-service/Simcag.IngestionService.Api
+WORKDIR /src/Simcag.IngestionService.Api
 
 # 🔥 melhor sem hardcode do csproj
 RUN dotnet restore
