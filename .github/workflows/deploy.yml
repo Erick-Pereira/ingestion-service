@@ -28,20 +28,13 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Find Dockerfile
-        id: find_dockerfile
-        run: |
-          DOCKERFILE_PATH=$(find . -name Dockerfile | grep IngestionService.Api | head -n 1)
-          echo "Found Dockerfile at: $DOCKERFILE_PATH"
-          echo "dockerfile=$DOCKERFILE_PATH" >> $GITHUB_OUTPUT
-
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           push: true
           tags: shelow/ingestion-service:latest
           context: .
-          file: ${{ steps.find_dockerfile.outputs.dockerfile }}
+          file: ingestion-service/Simcag.IngestionService.Api/Dockerfile
 
   test:
     runs-on: ubuntu-latest
@@ -51,4 +44,4 @@ jobs:
       - name: Debug structure (tests)
         run: ls -R
       - name: Run tests
-        run: dotnet test
+        run: dotnet test ingestion-service/ingestion-service.slnx

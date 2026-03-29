@@ -14,10 +14,14 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 
-COPY . .
+# Copy shared project (caminho relativo à raiz do repositório)
+COPY shared/ ./shared/
+
+# Copy ingestion-service projects (caminho relativo à raiz do repositório)
+COPY ingestion-service/ ./ingestion-service/
 
 # ✅ CAMINHO CORRIGIDO
-WORKDIR /src/Simcag.IngestionService.Api
+WORKDIR /src/ingestion-service/Simcag.IngestionService.Api
 
 # 🔥 melhor sem hardcode do csproj
 RUN dotnet restore
