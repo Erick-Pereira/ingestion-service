@@ -36,7 +36,7 @@ jobs:
           context: .
           file: ingestion-service/Simcag.IngestionService.Api/Dockerfile
           build-args: |
-            GITHUB_TOKEN=${{ secrets.TOKEN }}
+            TOKEN=${{ secrets.TOKEN }}
 
   test:
     runs-on: ubuntu-latest
