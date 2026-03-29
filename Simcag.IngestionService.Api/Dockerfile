@@ -12,13 +12,14 @@ EXPOSE 8080
 # =========================
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
+ARG TOKEN
 WORKDIR /src
 
 # Copy all files from ingestion-service repository
 COPY . .
 
 # Configure NuGet to use GitHub Packages
-RUN dotnet nuget add source https://nuget.pkg.github.com/Erick-Pereira/index.json --name github --username Erick-Pereira --password $TOKEN
+RUN dotnet nuget add source https://nuget.pkg.github.com/Erick-Pereira/index.json --name github --username Erick-Pereira --password "${TOKEN}"
 
 # ✅ CAMINHO CORRIGIDO - Entrar na pasta do projeto
 WORKDIR /src/Simcag.IngestionService.Api
