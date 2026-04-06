@@ -7,13 +7,14 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="RabbitMQ.Client" Version="6.5.0" />
 		<PackageReference Include="Simcag.Shared" Version="1.0.0" />
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\..\shared\shared.csproj" />
-		<ProjectReference Include="..\Simcag.IngestionService.Infrastructure\Simcag.IngestionService.Infrastructure.csproj" />
+		<ProjectReference
+			Include="..\Simcag.IngestionService.Domain\Simcag.IngestionService.Domain.csproj" />
+		<ProjectReference
+			Include="..\Simcag.IngestionService.Infrastructure\Simcag.IngestionService.Infrastructure.csproj" />
 	</ItemGroup>
 
 </Project>

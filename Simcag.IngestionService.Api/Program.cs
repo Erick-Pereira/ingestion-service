@@ -1,12 +1,14 @@
-﻿using Simcag.IngestionService.Infrastructure.Messaging;
-using Simcag.IngestionService.Application.Services;
+﻿using Simcag.IngestionService.Application.Services;
+using Simcag.Shared.Messaging.Configuration;
+using Simcag.Shared.Messaging.Extensions;
+using Simcag.IngestionService.Domain.Events;
 
 DotNetEnv.Env.Load();
 
 var builder = WebApplication.CreateBuilder(args);
 
 // 🔥 Bind para Docker (ESSENCIAL)
-builder.WebHost.UseUrls("http://localhost:8080");
+builder.WebHost.UseUrls("http://0.0.0.0:8080");
 
 // Controllers
 builder.Services.AddControllers();
@@ -15,29 +17,23 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// ✅ Validação
-builder.Services.AddSingleton<IProductValidationService, ProductValidationService>();
-
 // ✅ Serviço de aplicação
 builder.Services.AddSingleton<IIngestionService, IngestionServiceImpl>();
+builder.Services.AddSingleton<IProductValidationService, ProductValidationService>();
 
-// ✅ RabbitMQ via ENV VAR
-builder.Services.AddSingleton<IRabbitMqPublisher>(sp =>
+// ✅ Mensageria via ENV
+var rabbitMqOptions = new RabbitMqOptions
 {
-    var configuration = sp.GetRequiredService<IConfiguration>();
+    Host = Environment.GetEnvironmentVariable("RABBITMQ__HOST") ?? throw new InvalidOperationException("RABBITMQ__HOST not set"),
+    Port = int.Parse(Environment.GetEnvironmentVariable("RABBITMQ__PORT") ?? "5672"),
+    UserName = Environment.GetEnvironmentVariable("RABBITMQ__USERNAME") ?? throw new InvalidOperationException("RABBITMQ__USERNAME not set"),
+    Password = Environment.GetEnvironmentVariable("RABBITMQ__PASSWORD") ?? throw new InvalidOperationException("RABBITMQ__PASSWORD not set"),
+    VirtualHost = Environment.GetEnvironmentVariable("RABBITMQ__VIRTUALHOST") ?? "/"
+};
 
-    var host = configuration["RabbitMQ:Host"];
-    var userName = configuration["RabbitMQ:UserName"];
-    var password = configuration["RabbitMQ:Password"];
-    var port = int.Parse(configuration["RabbitMQ:Port"] ?? "5672");
-    var logger = sp.GetRequiredService<ILogger<RabbitMqPublisher>>();
-
-    Console.WriteLine($"HOST: {host}");
-    Console.WriteLine($"USER: {userName}");
-    Console.WriteLine($"PASS: {password}");
-    Console.WriteLine($"PORT: {port}");
-    return new RabbitMqPublisher(host, userName, password, port, logger);
-});
+builder.Services.AddRabbitMqMessaging(rabbitMqOptions, "simcag-events");
+builder.Services.AddRabbitMqEventPublisher<PriceCollectedEvent>();
+builder.Services.AddRabbitMqQueueDeclaration<PriceCollectedEvent>("price-collected");
 
 // Logging
 builder.Services.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Information));

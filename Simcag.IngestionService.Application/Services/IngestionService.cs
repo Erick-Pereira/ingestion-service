@@ -1,19 +1,19 @@
-﻿using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using shared.Events;
-using Simcag.IngestionService.Infrastructure.Messaging;
+using Simcag.Shared.Messaging.Contracts;
+using System.Threading.Tasks;
 
 namespace Simcag.IngestionService.Application.Services
 {
     public class IngestionServiceImpl : IIngestionService
     {
-        private readonly IRabbitMqPublisher _publisher;
+        private readonly IEventPublisher<PriceCollectedEvent> _publisher;
         private readonly IProductValidationService _validationService;
         private readonly ILogger<IngestionServiceImpl> _logger;
 
         public IngestionServiceImpl(
-            IRabbitMqPublisher publisher,
             IProductValidationService validationService,
+            IEventPublisher<PriceCollectedEvent> publisher,
             ILogger<IngestionServiceImpl> logger)
         {
             _publisher = publisher;
@@ -40,8 +40,7 @@ namespace Simcag.IngestionService.Application.Services
                     };
                 }
 
-                await _publisher.PublishAsync("price-events", @event);
-
+                await _publisher.PublishAsync(@event);
                 _logger.LogInformation("Evento de preço publicado com sucesso para produto {ProductId}", @event.ProductId);
 
                 return new IngestionResult
@@ -58,7 +57,7 @@ namespace Simcag.IngestionService.Application.Services
                 {
                     Success = false,
                     Errors = new[] { "Erro interno ao processar evento" },
-                    Message = "Erro interno"
+                    Message = ex.Message
                 };
             }
         }

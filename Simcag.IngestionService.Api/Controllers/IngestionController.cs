@@ -1,8 +1,6 @@
-﻿using shared.Events;
-using Simcag.IngestionService.Application.Services;
+﻿using Simcag.IngestionService.Application.Services;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
-using System.Threading.Tasks;
+using shared.Events;
 
 namespace Simcag.IngestionService.Api.Controllers
 {
