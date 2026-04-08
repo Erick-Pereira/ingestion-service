@@ -59,11 +59,12 @@ COPY --from=builder /app/publish .
 RUN chown -R appuser:appgroup /app
 
 # Configure environment
-ENV ASPNETCORE_URLS="http://+:8080" \
-    ASPNETCORE_ENVIRONMENT=Production \
-    DOTNET_RUNNING_IN_CONTAINER=true
+ENV ASPNETCORE_ENVIRONMENT=Production \
+    DOTNET_RUNNING_IN_CONTAINER=true \
+    ASPNETCORE_URLS=http://+:8080
 
-# Expose port
+# NOTE: default listen address can be overridden at runtime with
+# docker run -e ASPNETCORE_URLS="http://+:5000" ...
 EXPOSE 8080
 
 # Switch to non-root user
