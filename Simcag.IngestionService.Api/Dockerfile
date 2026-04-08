@@ -55,6 +55,9 @@ RUN groupadd -r appgroup && useradd -r -g appgroup appuser
 # Copy published application from builder
 COPY --from=builder /app/publish .
 
+# Install curl for health checks
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
 # Set ownership to non-root user
 RUN chown -R appuser:appgroup /app
 
