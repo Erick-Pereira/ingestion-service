@@ -59,11 +59,11 @@ COPY --from=builder /app/publish .
 RUN chown -R appuser:appgroup /app
 
 # Configure environment
-#ENV ASPNETCORE_ENVIRONMENT=Production \
+ENV ASPNETCORE_ENVIRONMENT=Production \
     DOTNET_RUNNING_IN_CONTAINER=true
 
 # NOTE: default listen address is 8080, but the app will try an available port if necessary
-#EXPOSE 8080
+EXPOSE 8080
 
 # Switch to non-root user
 USER appuser
