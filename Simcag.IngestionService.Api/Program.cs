@@ -1,48 +1,54 @@
-﻿using Simcag.IngestionService.Application.Services;
+﻿using Microsoft.Extensions.Options;
+using Simcag.IngestionService.Application.Services;
+using Simcag.IngestionService.Domain.Events;
 using Simcag.Shared.Messaging.Configuration;
 using Simcag.Shared.Messaging.Extensions;
-using Simcag.IngestionService.Domain.Events;
+using RabbitMQ.Client;
 
 DotNetEnv.Env.Load();
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 🔥 Bind para Docker (ESSENCIAL)
-builder.WebHost.UseUrls("http://0.0.0.0:8080");
+//builder.WebHost.UseUrls("http://0.0.0.0:8080");
 
-// Controllers
 builder.Services.AddControllers();
 
-// ✅ Swagger (faltava isso)
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// ✅ Serviço de aplicação
 builder.Services.AddSingleton<IIngestionService, IngestionServiceImpl>();
 builder.Services.AddSingleton<IProductValidationService, ProductValidationService>();
 
-// ✅ Mensageria via ENV
+var rabbitMqHost = Environment.GetEnvironmentVariable("RABBITMQ__HOST") ?? builder.Configuration["RabbitMq:Host"] ?? "localhost";
+var rabbitMqPort = int.Parse(Environment.GetEnvironmentVariable("RABBITMQ__PORT") ?? builder.Configuration["RabbitMq:Port"] ?? "5672");
+var rabbitMqUserName = Environment.GetEnvironmentVariable("RABBITMQ__USERNAME") ?? builder.Configuration["RabbitMq:UserName"] ?? "guest";
+var rabbitMqPassword = Environment.GetEnvironmentVariable("RABBITMQ__PASSWORD") ?? builder.Configuration["RabbitMq:Password"] ?? "guest";
+var rabbitMqVirtualHost = Environment.GetEnvironmentVariable("RABBITMQ__VIRTUALHOST") ?? builder.Configuration["RabbitMq:VirtualHost"] ?? "/";
+
 var rabbitMqOptions = new RabbitMqOptions
 {
-    Host = Environment.GetEnvironmentVariable("RABBITMQ__HOST") ?? throw new InvalidOperationException("RABBITMQ__HOST not set"),
-    Port = int.Parse(Environment.GetEnvironmentVariable("RABBITMQ__PORT") ?? "5672"),
-    UserName = Environment.GetEnvironmentVariable("RABBITMQ__USERNAME") ?? throw new InvalidOperationException("RABBITMQ__USERNAME not set"),
-    Password = Environment.GetEnvironmentVariable("RABBITMQ__PASSWORD") ?? throw new InvalidOperationException("RABBITMQ__PASSWORD not set"),
-    VirtualHost = Environment.GetEnvironmentVariable("RABBITMQ__VIRTUALHOST") ?? "/"
+    Host = rabbitMqHost,
+    Port = rabbitMqPort,
+    UserName = rabbitMqUserName,
+    Password = rabbitMqPassword,
+    VirtualHost = rabbitMqVirtualHost
 };
 
-builder.Services.AddRabbitMqMessaging(rabbitMqOptions, "simcag-events");
-builder.Services.AddRabbitMqEventPublisher<PriceCollectedEvent>();
-builder.Services.AddRabbitMqQueueDeclaration<PriceCollectedEvent>("price-collected");
+if (string.IsNullOrEmpty(rabbitMqOptions.Host))
+    throw new InvalidOperationException("RabbitMq:Host is not configured. Check appsettings.json or environment variables.");
+if (string.IsNullOrEmpty(rabbitMqOptions.UserName))
+    throw new InvalidOperationException("RabbitMq:UserName is not configured. Check appsettings.json or environment variables.");
 
-// Logging
-builder.Services.AddLogging(builder => builder.SetMinimumLevel(LogLevel.Information));
+builder.Services.AddRabbitMqMessaging(rabbitMqOptions);
+
+builder.Services.AddRabbitMqEventPublisher<PriceCollectedEvent>("simcag-events");
+
+builder.Services.AddLogging(config => config.SetMinimumLevel(LogLevel.Information));
 
 var app = builder.Build();
 
 // app.UseHttpsRedirection();
 
-// Swagger sempre ativo (pra debug)
 app.UseSwagger();
 app.UseSwaggerUI();
 

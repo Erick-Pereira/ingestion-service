@@ -1,12 +1,11 @@
 using System.Threading.Tasks;
-using shared.Events;
 using Simcag.IngestionService.Domain.Events;
 
 namespace Simcag.IngestionService.Application.Services
 {
     public interface IIngestionService
     {
-        Task<IngestionResult> ProcessPriceCollectedEventAsync(PriceCollectedEvent @event);
+        Task<IngestionResult> ProcessPriceCollectedEventAsync(PriceCollectedEvent @event, CancellationToken cancellationToken);
     }
 
     public class IngestionResult

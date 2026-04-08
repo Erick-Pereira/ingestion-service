@@ -1,6 +1,7 @@
 ﻿using Simcag.IngestionService.Application.Services;
 using Microsoft.AspNetCore.Mvc;
-using shared.Events;
+using Simcag.Shared.Messaging.Contracts;
+using Simcag.IngestionService.Domain.Events;
 
 namespace Simcag.IngestionService.Api.Controllers
 {
@@ -11,18 +12,28 @@ namespace Simcag.IngestionService.Api.Controllers
         private readonly IIngestionService _ingestionService;
         private readonly ILogger<IngestionController> _logger;
 
-        public IngestionController(IIngestionService ingestionService, ILogger<IngestionController> logger)
+        public IngestionController(
+            IIngestionService ingestionService,
+            ILogger<IngestionController> logger)
         {
             _ingestionService = ingestionService;
             _logger = logger;
         }
 
         [HttpPost]
-        public async Task<IActionResult> Post([FromBody] PriceCollectedEvent priceCollectedEvent)
+        public async Task<IActionResult> Post(
+            [FromBody] PriceCollectedEvent priceCollectedEvent,
+            CancellationToken cancellationToken = default)
         {
             try
             {
-                var result = await _ingestionService.ProcessPriceCollectedEventAsync(priceCollectedEvent);
+                _logger.LogInformation(
+                    "📤 Processing PriceCollectedEvent for product {ProductName}",
+                    priceCollectedEvent.ProductName);
+
+                var result = await _ingestionService.ProcessPriceCollectedEventAsync(
+                    priceCollectedEvent,
+                    cancellationToken);
 
                 if (!result.Success)
                 {
@@ -37,12 +48,13 @@ namespace Simcag.IngestionService.Api.Controllers
                 return Ok(new
                 {
                     success = true,
-                    message = result.Message
+                    message = result.Message,
+                    published = true
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Erro inesperado ao processar evento de preço");
+                _logger.LogError(ex, "Erro ao publicar ou processar evento de preço");
                 return StatusCode(500, new
                 {
                     success = false,

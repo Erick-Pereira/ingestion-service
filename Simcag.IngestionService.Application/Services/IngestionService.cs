@@ -20,17 +20,17 @@ namespace Simcag.IngestionService.Application.Services
             _logger = logger;
         }
 
-        public async Task<IngestionResult> ProcessPriceCollectedEventAsync(PriceCollectedEvent @event)
+        public async Task<IngestionResult> ProcessPriceCollectedEventAsync(PriceCollectedEvent @event, CancellationToken cancellationToken = default)
         {
             try
             {
-                _logger.LogInformation("Iniciando processamento do evento de preço para produto {ProductId}", @event.ProductId);
+                _logger.LogInformation("Iniciando processamento do evento de preço para produto {ProductId} em {Timestamp}", @event.Id, DateTime.UtcNow);
 
                 var validationResult = _validationService.ValidatePriceCollectedEvent(@event);
 
                 if (!validationResult.IsValid)
                 {
-                    _logger.LogWarning("Validação falhou para evento {ProductId}. Erros: {Errors}", @event.ProductId, string.Join(", ", validationResult.Errors));
+                    _logger.LogWarning("Validação falhou para evento {Id}. Erros: {Errors}", @event.Id, string.Join(", ", validationResult.Errors));
                     return new IngestionResult
                     {
                         Success = false,
@@ -39,8 +39,9 @@ namespace Simcag.IngestionService.Application.Services
                     };
                 }
 
-                await _publisher.PublishAsync(@event);
-                _logger.LogInformation("Evento de preço publicado com sucesso para produto {ProductId}", @event.ProductId);
+                _logger.LogInformation("Publicando evento {EventId} em {Timestamp}", @event.Id, DateTime.UtcNow);
+                await _publisher.PublishAsync(@event, cancellationToken);
+                _logger.LogInformation("Evento de preço publicado com sucesso para produto {Id} em {Timestamp}", @event.Id, DateTime.UtcNow);
 
                 return new IngestionResult
                 {
@@ -51,7 +52,7 @@ namespace Simcag.IngestionService.Application.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Erro ao processar evento de preço para produto {ProductId}", @event.ProductId);
+                _logger.LogError(ex, "Erro ao processar evento de preço para produto {Id}", @event.Id);
                 return new IngestionResult
                 {
                     Success = false,

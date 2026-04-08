@@ -1,34 +1,53 @@
-﻿using shared.Events;
-using System;
-using System.Collections.Generic;
-using System.Text;
+using Simcag.Shared.Events;
 
-namespace Simcag.IngestionService.Domain.Events
+namespace Simcag.IngestionService.Domain.Events;
+
+/// <summary>
+/// Published when a new user is created in the system.
+/// Subscribers: Email service (send welcome), Analytics service, CRM sync, etc.
+/// </summary>
+public class PriceCollectedEvent : BaseEvent
 {
-    public class PriceCollectedEvent : BaseEvent
+    // === Domain-Specific Properties ===
+    public string Id { get; init; } = string.Empty;
+
+    public string ProductName { get; init; } = string.Empty;
+
+    public decimal Price { get; init; }
+
+    public string Source { get; init; } = string.Empty;
+
+    public string Market { get; init; } = string.Empty;
+
+    // === Override EventType ===
+    public override string EventType => "price-collected";
+
+    public PriceCollectedEvent(Guid id, string productId, string productName, decimal price, string source, string market)
     {
-        public string ProductId { get; init; } = string.Empty;
+        if (id == Guid.Empty)
+            throw new ArgumentException("Id cannot be empty", nameof(id));
 
-        public string ProductName { get; init; } = string.Empty;
+        if (string.IsNullOrWhiteSpace(productId))
+            throw new ArgumentException("ProductId is required", nameof(productId));
 
-        public decimal Price { get; init; }
+        if (string.IsNullOrWhiteSpace(productName))
+            throw new ArgumentException("ProductName is required", nameof(productName));
 
-        public string Source { get; init; } = string.Empty;
+        if (price <= 0)
+            throw new ArgumentException("Price must be greater than zero", nameof(price));
 
-        public string Market { get; init; } = string.Empty;
+        if (string.IsNullOrWhiteSpace(source))
+            throw new ArgumentException("Source is required", nameof(source));
 
-        public override string EventType => "price-collected";
+        // Initialize
+        Id = id.ToString();
+        ProductName = productName;
+        Price = price;
+        Source = source;
+        Market = market ?? string.Empty;
+    }
 
-        public PriceCollectedEvent()
-        {
-        }
-
-        public PriceCollectedEvent(string productId, string productName, string source)
-        {
-            ProductId = productId;
-            ProductName = productName;
-            Source = source;
-            Market = source;
-        }
+    public PriceCollectedEvent()
+    {
     }
 }
