@@ -70,7 +70,7 @@ USER appuser
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD dotnet /app/Simcag.IngestionService.Api.dll --version 2>/dev/null || exit 1
+    CMD sh -c 'PORT=$(cat /tmp/app_port); curl -f http://localhost:$PORT/health || exit 1'
 
 # Start application
 ENTRYPOINT ["dotnet", "Simcag.IngestionService.Api.dll"]

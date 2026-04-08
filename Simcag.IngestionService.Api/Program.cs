@@ -7,6 +7,7 @@ using RabbitMQ.Client;
 using System.Net;
 using System.Net.Sockets;
 using System.Text.RegularExpressions;
+using System.IO;
 
 DotNetEnv.Env.Load();
 
@@ -22,6 +23,7 @@ builder.Services.AddControllers();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddHealthChecks();
 
 builder.Services.AddSingleton<IIngestionService, IngestionServiceImpl>();
 builder.Services.AddSingleton<IProductValidationService, ProductValidationService>();
@@ -62,6 +64,7 @@ app.UseSwaggerUI();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHealthChecks("/health");
 
 app.Run();
 
@@ -79,6 +82,7 @@ static string GetListeningUrl()
 
     var requestedPort = ParsePort(requestedUrl) ?? defaultPort;
     var port = FindAvailablePort(requestedPort);
+    File.WriteAllText("/tmp/app_port", port.ToString());
     return $"http://0.0.0.0:{port}";
 }
 
