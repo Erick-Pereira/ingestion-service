@@ -60,11 +60,9 @@ RUN chown -R appuser:appgroup /app
 
 # Configure environment
 #ENV ASPNETCORE_ENVIRONMENT=Production \
-#    DOTNET_RUNNING_IN_CONTAINER=true \
-#    ASPNETCORE_URLS=http://+:8080
+    DOTNET_RUNNING_IN_CONTAINER=true
 
-# NOTE: default listen address can be overridden at runtime with
-# docker run -e ASPNETCORE_URLS="http://+:5000" ...
+# NOTE: default listen address is 8080, but the app will try an available port if necessary
 #EXPOSE 8080
 
 # Switch to non-root user
