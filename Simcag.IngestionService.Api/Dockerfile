@@ -18,24 +18,24 @@ RUN dotnet nuget add source https://nuget.pkg.github.com/Erick-Pereira/index.jso
     --store-password-in-clear-text
 
 # Copy project files first (for cache efficiency)
-COPY ["Simcag.IngestionService.Api/Simcag.IngestionService.Api.csproj", "Simcag.IngestionService.Api/"]
-COPY ["Simcag.IngestionService.Application/Simcag.IngestionService.Application.csproj", "Simcag.IngestionService.Application/"]
-COPY ["Simcag.IngestionService.Domain/Simcag.IngestionService.Domain.csproj", "Simcag.IngestionService.Domain/"]
-COPY ["Simcag.IngestionService.Infrastructure/Simcag.IngestionService.Infrastructure.csproj", "Simcag.IngestionService.Infrastructure/"]
-COPY ["../shared/shared.csproj", "../shared/"]
+# Note: Build context is the repo root (/p/simcag)
+# shared is consumed as NuGet package, not source code
+COPY ["ingestion-service/Simcag.IngestionService.Api/Simcag.IngestionService.Api.csproj", "ingestion-service/Simcag.IngestionService.Api/"]
+COPY ["ingestion-service/Simcag.IngestionService.Application/Simcag.IngestionService.Application.csproj", "ingestion-service/Simcag.IngestionService.Application/"]
+COPY ["ingestion-service/Simcag.IngestionService.Domain/Simcag.IngestionService.Domain.csproj", "ingestion-service/Simcag.IngestionService.Domain/"]
+COPY ["ingestion-service/Simcag.IngestionService.Infrastructure/Simcag.IngestionService.Infrastructure.csproj", "ingestion-service/Simcag.IngestionService.Infrastructure/"]
 
-# Restore NuGet packages
-RUN dotnet restore "Simcag.IngestionService.Api/Simcag.IngestionService.Api.csproj"
+# Restore NuGet packages (includes Simcag.Shared from GitHub Packages)
+RUN dotnet restore "ingestion-service/Simcag.IngestionService.Api/Simcag.IngestionService.Api.csproj"
 
 # Copy entire source code
-COPY ["Simcag.IngestionService.Api/", "Simcag.IngestionService.Api/"]
-COPY ["Simcag.IngestionService.Application/", "Simcag.IngestionService.Application/"]
-COPY ["Simcag.IngestionService.Domain/", "Simcag.IngestionService.Domain/"]
-COPY ["Simcag.IngestionService.Infrastructure/", "Simcag.IngestionService.Infrastructure/"]
-COPY ["../shared/", "../shared/"]
+COPY ["ingestion-service/Simcag.IngestionService.Api/", "ingestion-service/Simcag.IngestionService.Api/"]
+COPY ["ingestion-service/Simcag.IngestionService.Application/", "ingestion-service/Simcag.IngestionService.Application/"]
+COPY ["ingestion-service/Simcag.IngestionService.Domain/", "ingestion-service/Simcag.IngestionService.Domain/"]
+COPY ["ingestion-service/Simcag.IngestionService.Infrastructure/", "ingestion-service/Simcag.IngestionService.Infrastructure/"]
 
 # Publish in Release mode
-RUN dotnet publish "Simcag.IngestionService.Api/Simcag.IngestionService.Api.csproj" \
+RUN dotnet publish "ingestion-service/Simcag.IngestionService.Api/Simcag.IngestionService.Api.csproj" \
     --configuration ${BUILD_CONFIGURATION} \
     --output /app/publish \
     --no-restore \
