@@ -14,7 +14,9 @@ var builder = WebApplication.CreateBuilder(args);
 
 var urls = GetListeningUrl();
 builder.WebHost.UseUrls(urls);
-Console.WriteLine($"Listening on {urls}");
+Console.WriteLine($"🚀 Ingestion Service listening on: {urls}");
+Console.WriteLine($"📡 Access via: http://localhost:{ParsePort(urls)} or http://container-host:{ParsePort(urls)}");
+
 
 builder.Services.AddControllers();
 
