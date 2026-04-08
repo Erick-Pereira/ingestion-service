@@ -35,7 +35,7 @@ COPY ["Simcag.IngestionService.Domain/", "Simcag.IngestionService.Domain/"]
 COPY ["Simcag.IngestionService.Infrastructure/", "Simcag.IngestionService.Infrastructure/"]
 
 # Publish in Release mode
-RUN dotnet publish "ingestion-service/Simcag.IngestionService.Api/Simcag.IngestionService.Api.csproj" \
+RUN dotnet publish "Simcag.IngestionService.Api/Simcag.IngestionService.Api.csproj" \
     --configuration ${BUILD_CONFIGURATION} \
     --output /app/publish \
     --no-restore \
