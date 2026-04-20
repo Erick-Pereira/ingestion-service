@@ -16,4 +16,14 @@
     <ProjectReference Include="..\Simcag.IngestionService.Domain\Simcag.IngestionService.Domain.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Clients\" />
+    <Folder Include="Configuration\" />
+    <Folder Include="JsonMapping\" />
+    <Folder Include="Persistence\Configurations\" />
+    <Folder Include="Persistence\DbContext\" />
+    <Folder Include="Persistence\Repositories\" />
+    <Folder Include="Resilience\" />
+  </ItemGroup>
+
 </Project>

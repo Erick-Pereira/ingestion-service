@@ -11,10 +11,18 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference
-			Include="..\Simcag.IngestionService.Domain\Simcag.IngestionService.Domain.csproj" />
-		<ProjectReference
-			Include="..\Simcag.IngestionService.Infrastructure\Simcag.IngestionService.Infrastructure.csproj" />
+		<ProjectReference Include="..\Simcag.IngestionService.Domain\Simcag.IngestionService.Domain.csproj" />
+		<ProjectReference Include="..\Simcag.IngestionService.Infrastructure\Simcag.IngestionService.Infrastructure.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Folder Include="DTOs\" />
+	  <Folder Include="Exceptions\" />
+	  <Folder Include="Interfaces\" />
+	  <Folder Include="Mapping\" />
+	  <Folder Include="UseCases\RegisterSource\" />
+	  <Folder Include="UseCases\StartIngestion\" />
+	  <Folder Include="Workers\" />
 	</ItemGroup>
 
 </Project>

@@ -20,4 +20,14 @@
     <ProjectReference Include="..\Simcag.IngestionService.Application\Simcag.IngestionService.Application.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Configuration\" />
+    <Folder Include="Contracts\Requests\" />
+    <Folder Include="Contracts\Responses\" />
+    <Folder Include="Extensions\" />
+    <Folder Include="Filters\" />
+    <Folder Include="HealthChecks\" />
+    <Folder Include="Middlewares\" />
+  </ItemGroup>
+
 </Project>
