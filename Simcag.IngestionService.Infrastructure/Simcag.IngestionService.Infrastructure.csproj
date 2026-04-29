@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -7,23 +7,25 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="ExcelDataReader" Version="3.7.0" />
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="10.0.0" />
+    <PackageReference Include="UglyToad.PdfPig" Version="1.7.0-custom-5" />
     <PackageReference Include="RabbitMQ.Client" Version="6.8.1" />
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.3" />
-    <PackageReference Include="Simcag.Shared" Version="1.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.5" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.5" />
+    <ProjectReference Include="..\..\shared\shared.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Simcag.IngestionService.Domain\Simcag.IngestionService.Domain.csproj" />
+    <ProjectReference Include="..\Simcag.IngestionService.Application\Simcag.IngestionService.Application.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="Clients\" />
-    <Folder Include="Configuration\" />
-    <Folder Include="JsonMapping\" />
-    <Folder Include="Persistence\Configurations\" />
-    <Folder Include="Persistence\DbContext\" />
-    <Folder Include="Persistence\Repositories\" />
-    <Folder Include="Resilience\" />
+<ItemGroup>
+    <Folder Include="Ocr\" />
+    <Folder Include="Parser\" />
+    <Folder Include="Publisher\" />
+    <Folder Include="Storage\" />
   </ItemGroup>
 
 </Project>

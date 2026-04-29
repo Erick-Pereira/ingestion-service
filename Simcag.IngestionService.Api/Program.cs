@@ -1,6 +1,10 @@
-﻿using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Options;
 using Simcag.IngestionService.Application.Services;
-using Simcag.IngestionService.Domain.Events;
+using Simcag.IngestionService.Application.UseCases;
+using Simcag.IngestionService.Infrastructure.Ocr;
+using Simcag.IngestionService.Infrastructure.Parser;
+using Simcag.Shared.Events;
+using Simcag.Shared.Messaging;
 using Simcag.Shared.Messaging.Configuration;
 using Simcag.Shared.Messaging.Extensions;
 using RabbitMQ.Client;
@@ -22,17 +26,57 @@ Console.WriteLine($"📡 Access via: http://localhost:{ParsePort(urls)} or http:
 builder.Services.AddControllers();
 
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new Microsoft.OpenApi.OpenApiInfo { Title = "SIMC-AG Service", Version = "v1" });
+    c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.OpenApiSecurityScheme
+    {
+        Name        = "Authorization",
+        In          = Microsoft.OpenApi.ParameterLocation.Header,
+        Type        = Microsoft.OpenApi.SecuritySchemeType.Http,
+        Scheme      = "bearer",
+        BearerFormat = "JWT",
+        Description = "Cole apenas o JWT (sem 'Bearer ')."
+    });
+    c.AddSecurityRequirement(document => new Microsoft.OpenApi.OpenApiSecurityRequirement
+    {
+        [new Microsoft.OpenApi.OpenApiSecuritySchemeReference("Bearer", document)] = []
+    });
+});
 builder.Services.AddHealthChecks();
 
+// Register Infrastructure services
+builder.Services.AddSingleton<IOcrService, TesseractOcrService>();
+builder.Services.AddSingleton<IPdfParserService, PdfParserService>();
+builder.Services.AddSingleton<IExcelParserService, ExcelParserService>();
+
+// Register Application services
 builder.Services.AddSingleton<IIngestionService, IngestionServiceImpl>();
 builder.Services.AddSingleton<IProductValidationService, ProductValidationService>();
+builder.Services.AddSingleton<IngestionOrchestrator>();
 
-var rabbitMqHost = Environment.GetEnvironmentVariable("RABBITMQ__HOST") ?? builder.Configuration["RabbitMq:Host"] ?? "localhost";
-var rabbitMqPort = int.Parse(Environment.GetEnvironmentVariable("RABBITMQ__PORT") ?? builder.Configuration["RabbitMq:Port"] ?? "5672");
-var rabbitMqUserName = Environment.GetEnvironmentVariable("RABBITMQ__USERNAME") ?? builder.Configuration["RabbitMq:UserName"] ?? "guest";
-var rabbitMqPassword = Environment.GetEnvironmentVariable("RABBITMQ__PASSWORD") ?? builder.Configuration["RabbitMq:Password"] ?? "guest";
-var rabbitMqVirtualHost = Environment.GetEnvironmentVariable("RABBITMQ__VIRTUALHOST") ?? builder.Configuration["RabbitMq:VirtualHost"] ?? "/";
+// Register Use Cases
+builder.Services.AddSingleton<IIngestDocumentUseCase, IngestDocumentUseCase>();
+builder.Services.AddSingleton<IExtractTextUseCase, ExtractTextUseCase>();
+builder.Services.AddSingleton<IParseDocumentUseCase, ParseDocumentUseCase>();
+builder.Services.AddSingleton<IPublishRawEventUseCase, PublishRawEventUseCase>();
+
+static string? RmqEnv(params string[] keys)
+{
+    foreach (var key in keys)
+    {
+        var v = Environment.GetEnvironmentVariable(key);
+        if (!string.IsNullOrWhiteSpace(v))
+            return v;
+    }
+    return null;
+}
+
+var rabbitMqHost = RmqEnv("RABBITMQ__HOST", "RABBITMQ_HOST") ?? "localhost";
+var rabbitMqPort = int.Parse(RmqEnv("RABBITMQ__PORT", "RABBITMQ_PORT") ?? "5672");
+var rabbitMqUserName = RmqEnv("RABBITMQ__USERNAME", "RABBITMQ_USERNAME") ?? "guest";
+var rabbitMqPassword = RmqEnv("RABBITMQ__PASSWORD", "RABBITMQ_PASSWORD") ?? "guest";
+var rabbitMqVirtualHost = RmqEnv("RABBITMQ__VIRTUALHOST", "RABBITMQ_VIRTUALHOST") ?? "/";
 
 var rabbitMqOptions = new RabbitMqOptions
 {
@@ -44,13 +88,18 @@ var rabbitMqOptions = new RabbitMqOptions
 };
 
 if (string.IsNullOrEmpty(rabbitMqOptions.Host))
-    throw new InvalidOperationException("RabbitMq:Host is not configured. Check appsettings.json or environment variables.");
+    throw new InvalidOperationException("RabbitMQ host não configurado. Defina RABBITMQ__HOST no .env.");
 if (string.IsNullOrEmpty(rabbitMqOptions.UserName))
-    throw new InvalidOperationException("RabbitMq:UserName is not configured. Check appsettings.json or environment variables.");
+    throw new InvalidOperationException("RabbitMQ user não configurado. Defina RABBITMQ__USERNAME no .env.");
 
 builder.Services.AddRabbitMqMessaging(rabbitMqOptions);
 
-builder.Services.AddRabbitMqEventPublisher<PriceCollectedEvent>("simcag-events");
+var eventsExchange = EventBusConstants.GetEventsExchangeName();
+
+// Register RabbitMQ publisher for Simcag.Shared.Events.RawFinancialDataEvent
+builder.Services.AddRabbitMqEventPublisher<Simcag.Shared.Events.RawFinancialDataEvent>(eventsExchange);
+
+builder.Services.AddRabbitMqEventPublisher<Simcag.Shared.Events.PriceCollectedEvent>(eventsExchange);
 
 builder.Services.AddLogging(config => config.SetMinimumLevel(LogLevel.Information));
 
@@ -65,6 +114,7 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapHealthChecks("/health");
+app.MapFallbackToFile("index.html");
 
 app.Run();
 
@@ -82,7 +132,7 @@ static string GetListeningUrl()
 
     var requestedPort = ParsePort(requestedUrl) ?? defaultPort;
     var port = FindAvailablePort(requestedPort);
-    File.WriteAllText("/tmp/app_port", port.ToString());
+    try { File.WriteAllText(Path.Combine(Path.GetTempPath(), "app_port"), port.ToString()); } catch { }
     return $"http://0.0.0.0:{port}";
 }
 

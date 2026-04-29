@@ -1,5 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
-using Simcag.IngestionService.Domain.Events;
+using Simcag.Shared.Events;
 using Simcag.Shared.Messaging.Contracts;
 
 namespace Simcag.IngestionService.Application.Services
@@ -24,13 +24,13 @@ namespace Simcag.IngestionService.Application.Services
         {
             try
             {
-                _logger.LogInformation("Iniciando processamento do evento de preço para produto {ProductId} em {Timestamp}", @event.Id, DateTime.UtcNow);
+                _logger.LogInformation("Iniciando processamento do evento de preço para produto {ProductId} (EventId={EventId}) em {Timestamp}", @event.ProductId, @event.EventId, DateTime.UtcNow);
 
                 var validationResult = _validationService.ValidatePriceCollectedEvent(@event);
 
                 if (!validationResult.IsValid)
                 {
-                    _logger.LogWarning("Validação falhou para evento {Id}. Erros: {Errors}", @event.Id, string.Join(", ", validationResult.Errors));
+                    _logger.LogWarning("Validação falhou para evento {EventId}. Erros: {Errors}", @event.EventId, string.Join(", ", validationResult.Errors));
                     return new IngestionResult
                     {
                         Success = false,
@@ -39,9 +39,10 @@ namespace Simcag.IngestionService.Application.Services
                     };
                 }
 
-                _logger.LogInformation("Publicando evento {EventId} em {Timestamp}", @event.Id, DateTime.UtcNow);
-                await _publisher.PublishAsync(@event, cancellationToken);
-                _logger.LogInformation("Evento de preço publicado com sucesso para produto {Id} em {Timestamp}", @event.Id, DateTime.UtcNow);
+                var toPublish = EnsureEventId(@event);
+                _logger.LogInformation("Publicando evento {EventId} em {Timestamp}", toPublish.EventId, DateTime.UtcNow);
+                await _publisher.PublishAsync(toPublish, cancellationToken);
+                _logger.LogInformation("Evento de preço publicado com sucesso para EventId {EventId} em {Timestamp}", toPublish.EventId, DateTime.UtcNow);
 
                 return new IngestionResult
                 {
@@ -52,7 +53,7 @@ namespace Simcag.IngestionService.Application.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Erro ao processar evento de preço para produto {Id}", @event.Id);
+                _logger.LogError(ex, "Erro ao processar evento de preço (EventId={EventId}, ProductId={ProductId})", @event.EventId, @event.ProductId);
                 return new IngestionResult
                 {
                     Success = false,
@@ -60,6 +61,29 @@ namespace Simcag.IngestionService.Application.Services
                     Message = ex.Message
                 };
             }
+        }
+
+        /// <summary>
+        /// Deserialização JSON comum: EventId fica vazio; gera um GUID antes de publicar.
+        /// </summary>
+        private static PriceCollectedEvent EnsureEventId(PriceCollectedEvent @event)
+        {
+            if (@event.EventId != Guid.Empty)
+                return @event;
+
+            return new PriceCollectedEvent
+            {
+                EventId = Guid.NewGuid(),
+                CreatedAt = @event.CreatedAt,
+                ProductId = @event.ProductId,
+                ProductName = @event.ProductName,
+                Price = @event.Price,
+                Source = @event.Source,
+                Market = @event.Market,
+                OccurredAt = @event.OccurredAt,
+                Timestamp = @event.Timestamp,
+                Data = @event.Data
+            };
         }
     }
 }

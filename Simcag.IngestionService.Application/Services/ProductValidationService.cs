@@ -1,4 +1,4 @@
-using Simcag.IngestionService.Domain.Events;
+using Simcag.Shared.Events;
 
 namespace Simcag.IngestionService.Application.Services;
 
@@ -16,15 +16,6 @@ public class ProductValidationService : IProductValidationService
         {
             errors.Add("O evento não pode ser nulo");
             return new ValidationResult { IsValid = false, Errors = errors.ToArray() };
-        }
-
-        if (string.IsNullOrWhiteSpace(@event.Id))
-        {
-            errors.Add("O Id é obrigatório e deve ter entre 1 e 50 caracteres");
-        }
-        else if (@event.Id.Length > 50)
-        {
-            errors.Add("O Id não pode ter mais de 50 caracteres");
         }
 
         if (string.IsNullOrWhiteSpace(@event.ProductName))

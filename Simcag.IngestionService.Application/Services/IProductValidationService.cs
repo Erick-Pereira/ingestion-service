@@ -1,4 +1,4 @@
-using Simcag.IngestionService.Domain.Events;
+using Simcag.Shared.Events;
 
 namespace Simcag.IngestionService.Application.Services
 {

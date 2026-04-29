@@ -1,6 +1,32 @@
-@ingestion_service_HostAddress = http://localhost:5105
+@ingestion_service_HostAddress = http://localhost:8080
 
-GET {{ingestion_service_HostAddress}}/weatherforecast/
+### Upload (rota alinhada ao gateway)
+POST {{ingestion_service_HostAddress}}/ingestion/upload
+Content-Type: multipart/form-data; boundary=----boundary
+
+------boundary
+Content-Disposition: form-data; name="file"; filename="sample.txt"
+Content-Type: text/plain
+
+NOTA FISCAL
+Serviço R$ 100,00 em 01/01/2026
+------boundary
+Content-Disposition: form-data; name="source"
+
+portal
+------boundary
+Content-Disposition: form-data; name="origin"
+
+torre-a
+------boundary
+Content-Disposition: form-data; name="tenantId"
+
+tenant-cond-001
+------boundary--
+
+###
+
+GET {{ingestion_service_HostAddress}}/ingestion/health
 Accept: application/json
 
 ###
