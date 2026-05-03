@@ -12,7 +12,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Simcag.IngestionService.Domain\Simcag.IngestionService.Domain.csproj" />
-    <PackageReference Include="Simcag.Shared" Version="1.0.0" />
+    <PackageReference Include="Simcag.Shared" Version="1.0.1" />
   </ItemGroup>
 
   <ItemGroup>

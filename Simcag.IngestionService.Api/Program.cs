@@ -7,6 +7,7 @@ using Simcag.Shared.Events;
 using Simcag.Shared.Messaging;
 using Simcag.Shared.Messaging.Configuration;
 using Simcag.Shared.Messaging.Extensions;
+using Simcag.Shared.Hosting;
 using RabbitMQ.Client;
 using System.Net;
 using System.Net.Sockets;
@@ -14,6 +15,7 @@ using System.Text.RegularExpressions;
 using System.IO;
 
 DotNetEnv.Env.Load();
+ContainerListenConfiguration.ClearLoopbackAspNetCoreUrlsInContainer();
 
 var builder = WebApplication.CreateBuilder(args);
 
