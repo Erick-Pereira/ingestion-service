@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Simcag.IngestionService.Api.Contracts;
 using Simcag.IngestionService.Application.Services;
 using Simcag.IngestionService.Domain.Enums;

@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -12,7 +12,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Simcag.IngestionService.Domain\Simcag.IngestionService.Domain.csproj" />
-    <ProjectReference Include="..\..\shared\shared.csproj" />
+    <PackageReference Include="Simcag.Shared" Version="1.0.0" />
   </ItemGroup>
 
   <ItemGroup>
