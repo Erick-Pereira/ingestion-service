@@ -15,7 +15,7 @@ using System.Text.RegularExpressions;
 using System.IO;
 
 DotNetEnv.Env.Load();
-ContainerListenConfiguration.ClearLoopbackAspNetCoreUrlsInContainer();
+ContainerListenConfiguration.NormalizeAspNetCoreListenUrlsInContainer();
 
 var builder = WebApplication.CreateBuilder(args);
 
