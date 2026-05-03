@@ -18,6 +18,7 @@ DotNetEnv.Env.Load();
 ContainerListenConfiguration.NormalizeAspNetCoreListenUrlsInContainer();
 
 var builder = WebApplication.CreateBuilder(args);
+ContainerListenConfiguration.ApplyDockerListenUrls(builder);
 
 var urls = GetListeningUrl();
 builder.WebHost.UseUrls(urls);
