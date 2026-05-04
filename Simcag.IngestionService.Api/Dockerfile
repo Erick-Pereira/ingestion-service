@@ -24,10 +24,7 @@ COPY ["Simcag.IngestionService.Infrastructure/Simcag.IngestionService.Infrastruc
 
 RUN dotnet restore "Simcag.IngestionService.Api/Simcag.IngestionService.Api.csproj"
 
-COPY ["Simcag.IngestionService.Api/", "Simcag.IngestionService.Api/"]
-COPY ["Simcag.IngestionService.Application/", "Simcag.IngestionService.Application/"]
-COPY ["Simcag.IngestionService.Domain/", "Simcag.IngestionService.Domain/"]
-COPY ["Simcag.IngestionService.Infrastructure/", "Simcag.IngestionService.Infrastructure/"]
+COPY . .
 
 RUN dotnet publish "Simcag.IngestionService.Api/Simcag.IngestionService.Api.csproj" \
     --configuration "${BUILD_CONFIGURATION}" \
@@ -43,7 +40,6 @@ RUN groupadd -r appgroup && useradd -r -g appgroup appuser
 
 COPY --from=builder /app/publish .
 
-USER root
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/* \

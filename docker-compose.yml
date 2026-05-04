@@ -20,6 +20,11 @@ services:
       RABBITMQ__USERNAME: ${RABBITMQ__USERNAME:-guest}
       RABBITMQ__PASSWORD: ${RABBITMQ__PASSWORD:-guest}
       RABBITMQ__VIRTUALHOST: ${RABBITMQ__VIRTUALHOST:-/}
+      DB__HOST: ${DB__HOST:-host.docker.internal}
+      DB__PORT: ${DB__PORT:-5432}
+      DB__NAME: ${DB__NAME:-ingestiondb}
+      DB__USER: ${DB__USER:-postgres}
+      DB__PASSWORD: ${DB__PASSWORD:-postgres}
     networks:
       - simcag_net
     restart: unless-stopped
