@@ -14,7 +14,7 @@ using System.Net.Sockets;
 using System.Text.RegularExpressions;
 using System.IO;
 
-DotNetEnv.Env.Load();
+DotNetEnv.Env.NoClobber().Load();
 ContainerListenConfiguration.NormalizeAspNetCoreListenUrlsInContainer();
 
 var builder = WebApplication.CreateBuilder(args);
