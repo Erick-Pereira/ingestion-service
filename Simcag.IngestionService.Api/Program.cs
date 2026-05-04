@@ -48,7 +48,8 @@ builder.Services.AddSwaggerGen(c =>
         [new Microsoft.OpenApi.OpenApiSecuritySchemeReference("Bearer", document)] = []
     });
 });
-builder.Services.AddHealthChecks();
+builder.Services.AddHealthChecks()
+    .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"]);
 
 // Register Infrastructure services
 builder.Services.AddSingleton<IOcrService, TesseractOcrService>();
@@ -131,10 +132,33 @@ static string GetListeningUrl()
 {
     const int defaultPort = 8080;
 
-    var envUrls = Environment.GetEnvironmentVariable("ASPNETCORE_URLS");
+    // Em Docker não usar FindAvailablePort: o probe TcpListener pode falhar em portas já “reservadas”
+    // pelo runtime e o HEALTHCHECK usa ASPNETCORE_HTTP_PORTS — desalinhamento → unhealthy (ex.: curl :5002).
+    if (string.Equals(Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER"), "true", StringComparison.OrdinalIgnoreCase))
+    {
+        var envUrls = Environment.GetEnvironmentVariable("ASPNETCORE_URLS");
+        if (!string.IsNullOrWhiteSpace(envUrls))
+        {
+            var first = envUrls.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)[0];
+            if (Uri.TryCreate(first, UriKind.Absolute, out var u) && u.Port > 0)
+                return $"http://+:{u.Port}";
+        }
+
+        var httpPorts = Environment.GetEnvironmentVariable("ASPNETCORE_HTTP_PORTS");
+        if (!string.IsNullOrWhiteSpace(httpPorts))
+        {
+            var token = httpPorts.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)[0];
+            if (int.TryParse(token, out var p) && p > 0)
+                return $"http://+:{p}";
+        }
+
+        return $"http://+:{defaultPort}";
+    }
+
+    var envUrlsLocal = Environment.GetEnvironmentVariable("ASPNETCORE_URLS");
     var envPort = Environment.GetEnvironmentVariable("PORT");
-    var requestedUrl = !string.IsNullOrWhiteSpace(envUrls)
-        ? envUrls
+    var requestedUrl = !string.IsNullOrWhiteSpace(envUrlsLocal)
+        ? envUrlsLocal
         : !string.IsNullOrWhiteSpace(envPort)
             ? $"http://0.0.0.0:{envPort}"
             : $"http://0.0.0.0:{defaultPort}";
