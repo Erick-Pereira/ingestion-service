@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using Simcag.IngestionService.Application.Services;
 using Simcag.IngestionService.Application.UseCases;
@@ -117,6 +119,10 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapHealthChecks("/health");
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = registration => registration.Tags?.Contains("live") == true,
+});
 app.MapFallbackToFile("index.html");
 
 app.Run();

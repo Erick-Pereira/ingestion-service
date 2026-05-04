@@ -50,14 +50,15 @@ RUN apt-get update \
     && chown -R appuser:appgroup /app
 
 ENV ASPNETCORE_ENVIRONMENT=Production \
-    DOTNET_RUNNING_IN_CONTAINER=true \
-    ASPNETCORE_URLS=http://+:8080
+    ASPNETCORE_URLS=http://+:8080 \
+    ASPNETCORE_HTTP_PORTS=8080 \
+    DOTNET_RUNNING_IN_CONTAINER=true
 
 EXPOSE 8080
 
 USER appuser
 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-    CMD sh -c 'p="${ASPNETCORE_HTTP_PORTS:-8080}"; p="${p%%,*}"; curl -fsS "http://localhost:${p}/health" >/dev/null || exit 1'
+HEALTHCHECK --interval=30s --timeout=8s --start-period=25s --retries=3 \
+    CMD sh -c 'p="${ASPNETCORE_HTTP_PORTS:-8080}"; p="${p%%,*}"; curl -fsS "http://127.0.0.1:${p}/health/live" >/dev/null || exit 1'
 
 ENTRYPOINT ["dotnet", "Simcag.IngestionService.Api.dll"]

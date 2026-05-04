@@ -1,0 +1,35 @@
+# Apenas Ingestion API. RabbitMQ noutro contentor ou no host (ex.: docker-compose.dev.yml).
+# Porta host alinhada ao gateway: 5002.
+
+services:
+  ingestion-service:
+    build:
+      context: .
+      dockerfile: Simcag.IngestionService.Api/Dockerfile
+    image: simcag/ingestion-service:latest
+    container_name: simcag-ingestion-service
+    ports:
+      - "5002:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ASPNETCORE_URLS: http://+:8080
+      DOTNET_RUNNING_IN_CONTAINER: "true"
+      RABBITMQ__HOST: ${RABBITMQ__HOST:-host.docker.internal}
+      RABBITMQ__PORT: ${RABBITMQ__PORT:-5672}
+      RABBITMQ__USERNAME: ${RABBITMQ__USERNAME:-guest}
+      RABBITMQ__PASSWORD: ${RABBITMQ__PASSWORD:-guest}
+      RABBITMQ__VIRTUALHOST: ${RABBITMQ__VIRTUALHOST:-/}
+    networks:
+      - simcag_net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "p=\"$${ASPNETCORE_HTTP_PORTS:-8080}\"; p=\"$${p%%,*}\"; curl -fsS \"http://127.0.0.1:$${p}/health/live\" >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+      start_period: 25s
+
+networks:
+  simcag_net:
+    driver: bridge
