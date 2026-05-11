@@ -24,4 +24,10 @@
     <ProjectReference Include="..\Simcag.IngestionService.Domain\Simcag.IngestionService.Domain.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="TestData\relatorio_condominio_pdfpig.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

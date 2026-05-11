@@ -15,5 +15,13 @@ public sealed class DocumentUploadForm
 
     public string Origin { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Opcional. Deve ser um GUID válido. Via gateway autenticado, pode omitir: usa-se o claim <c>tenant_id</c> do JWT (<c>X-Tenant-Id</c>).
+    /// </summary>
     public string? TenantId { get; set; }
+
+    /// <summary>
+    /// Se <c>true</c>, ignora deduplicação por hash (força novo <c>documentId</c> e novo processamento).
+    /// </summary>
+    public bool Force { get; set; }
 }

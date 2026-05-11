@@ -2,13 +2,11 @@ using Microsoft.AspNetCore.Mvc;
 using Simcag.IngestionService.Api.Contracts;
 using Simcag.IngestionService.Application.Services;
 using Simcag.IngestionService.Domain.Enums;
-using Simcag.Shared.Events;
 
 namespace Simcag.IngestionService.Api.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
-[Route("ingestion")]
+[Route("api/ingestion")]
 public class IngestionController : ControllerBase
 {
     private readonly IngestionOrchestrator _orchestrator;
@@ -57,6 +55,8 @@ public class IngestionController : ControllerBase
 
             using var fileStream = file.OpenReadStream();
 
+            var tenantId = ResolveTenantId(form.TenantId, Request.Headers);
+
             // Process document through orchestrator
             var result = await _orchestrator.OrchestrateIngestionAsync(
                 fileStream,
@@ -65,7 +65,8 @@ public class IngestionController : ControllerBase
                 file.Length,
                 form.Source,
                 form.Origin,
-                form.TenantId,
+                tenantId,
+                form.Force,
                 cancellationToken);
 
             if (!result.IsSuccess)
@@ -82,16 +83,46 @@ public class IngestionController : ControllerBase
                 });
             }
 
+            if (result.IsDeduplicatedUpload && result.DedupEntry is not null)
+            {
+                var d = result.DedupEntry;
+                _logger.LogInformation(
+                    "Upload deduplicado para {FileName} → documento existente {DocumentId}",
+                    file.FileName,
+                    d.DocumentId);
+
+                return Ok(new
+                {
+                    success = true,
+                    deduplicated = true,
+                    message = result.Message,
+                    documentId = d.DocumentId,
+                    tenantId = d.TenantId,
+                    documentType = d.DocumentType,
+                    extractedItems = d.ExtractedItemCount,
+                    publishedRawFinancialEvent = false,
+                    publishedDataIngestedEvent = false,
+                    processingNote =
+                        "Mesmo PDF e tenant que um upload anterior: não republicámos eventos. O documentId é o da primeira ingestão bem-sucedida. Use Force=true no formulário para ingerir de novo como cópia independente."
+                });
+            }
+
             _logger.LogInformation("Ingestão concluída com sucesso para {FileName}", file.FileName);
 
             return Ok(new
             {
                 success = true,
+                deduplicated = false,
                 message = result.Message,
                 documentId = result.Document?.Id,
+                tenantId = result.Document?.TenantId,
                 documentType = result.Document?.DocumentType.ToString(),
                 extractedItems = result.Document?.ExtractedLineItems.Count ?? 0,
-                published = true
+                publishedRawFinancialEvent = true,
+                publishedDataIngestedEvent = result.PublishedDataIngestedEvent,
+                processingNote = result.PublishedDataIngestedEvent
+                    ? null
+                    : "DataIngestedEvent não foi publicado: envie TenantId como GUID válido ou use o gateway com JWT (header X-Tenant-Id). Sem este evento o Processing Service não persiste despesa."
             });
         }
         catch (Exception ex)
@@ -107,52 +138,24 @@ public class IngestionController : ControllerBase
     }
 
     /// <summary>
-    /// Endpoint legacy para processamento de PriceCollectedEvent (manter compatibilidade)
+    /// GUID do formulário tem prioridade; se inválido ou vazio, usa <c>X-Tenant-Id</c> (gateway injeta a partir do JWT).
     /// </summary>
-    [HttpPost]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> Post(
-        [FromBody] PriceCollectedEvent priceCollectedEvent,
-        CancellationToken cancellationToken = default)
+    private static string? ResolveTenantId(string? formTenantId, IHeaderDictionary headers)
     {
-        try
-        {
-            _logger.LogInformation(
-                "📤 Processing PriceCollectedEvent for product {ProductName}",
-                priceCollectedEvent.ProductName);
+        var trimmed = formTenantId?.Trim();
+        if (!string.IsNullOrEmpty(trimmed)
+            && Guid.TryParse(trimmed, out var formGuid)
+            && formGuid != Guid.Empty)
+            return formGuid.ToString();
 
-            var result = await _ingestionService.ProcessPriceCollectedEventAsync(
-                priceCollectedEvent,
-                cancellationToken);
+        if (!headers.TryGetValue("X-Tenant-Id", out var headerVals))
+            return null;
 
-            if (!result.Success)
-            {
-                return BadRequest(new
-                {
-                    success = false,
-                    errors = result.Errors,
-                    message = result.Message
-                });
-            }
+        var header = headerVals.FirstOrDefault()?.Trim();
+        if (string.IsNullOrEmpty(header))
+            return null;
 
-            return Ok(new
-            {
-                success = true,
-                message = result.Message,
-                published = true
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Erro ao publicar ou processar evento de preço");
-            return StatusCode(500, new
-            {
-                success = false,
-                errors = new[] { "Erro interno do servidor" },
-                message = "Erro interno"
-            });
-        }
+        return Guid.TryParse(header, out var hg) && hg != Guid.Empty ? hg.ToString() : null;
     }
 
     /// <summary>

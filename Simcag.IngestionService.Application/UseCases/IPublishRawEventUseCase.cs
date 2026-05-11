@@ -6,5 +6,5 @@ namespace Simcag.IngestionService.Application.UseCases;
 
 public interface IPublishRawEventUseCase
 {
-    Task PublishAsync(RawDocument document, CancellationToken cancellationToken = default);
+    Task<RawEventPublishOutcome> PublishAsync(RawDocument document, CancellationToken cancellationToken = default);
 }

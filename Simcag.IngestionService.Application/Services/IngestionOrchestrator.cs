@@ -1,5 +1,6 @@
 using Simcag.IngestionService.Domain.Entities;
 using Simcag.IngestionService.Domain.Enums;
+using Simcag.IngestionService.Domain.ValueObjects;
 using Simcag.IngestionService.Application.UseCases;
 using Microsoft.Extensions.Logging;
 
@@ -11,6 +12,7 @@ public class IngestionOrchestrator
     private readonly IExtractTextUseCase _extractTextUseCase;
     private readonly IParseDocumentUseCase _parseDocumentUseCase;
     private readonly IPublishRawEventUseCase _publishRawEventUseCase;
+    private readonly IIngestionUploadDedupStore? _uploadDedup;
     private readonly ILogger<IngestionOrchestrator> _logger;
 
     public IngestionOrchestrator(
@@ -18,12 +20,14 @@ public class IngestionOrchestrator
         IExtractTextUseCase extractTextUseCase,
         IParseDocumentUseCase parseDocumentUseCase,
         IPublishRawEventUseCase publishRawEventUseCase,
-        ILogger<IngestionOrchestrator> logger)
+        ILogger<IngestionOrchestrator> logger,
+        IIngestionUploadDedupStore? uploadDedup = null)
     {
         _ingestDocumentUseCase = ingestDocumentUseCase;
         _extractTextUseCase = extractTextUseCase;
         _parseDocumentUseCase = parseDocumentUseCase;
         _publishRawEventUseCase = publishRawEventUseCase;
+        _uploadDedup = uploadDedup;
         _logger = logger;
     }
 
@@ -35,14 +39,35 @@ public class IngestionOrchestrator
         string source,
         string origin,
         string? tenantId,
+        bool forceNewDocument,
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Iniciando orquestração de ingestão para arquivo {FileName}", fileName);
 
         try
         {
+            await using var buffer = new MemoryStream();
+            await fileStream.CopyToAsync(buffer, cancellationToken);
+            var fileBytes = buffer.ToArray();
+            if (fileBytes.Length == 0)
+            {
+                return IngestionOrchestratorResult.Failure(
+                    "Documento inválido para processamento",
+                    new[] { "Arquivo vazio" });
+            }
+
+            var fileHash = FileHash.ComputeSha256(fileBytes);
+            if (!forceNewDocument
+                && !string.IsNullOrWhiteSpace(tenantId)
+                && _uploadDedup is not null
+                && _uploadDedup.TryGet(tenantId, fileHash, out var prior))
+            {
+                return IngestionOrchestratorResult.Duplicate(prior);
+            }
+
+            using var readStream = new MemoryStream(fileBytes, writable: false);
             var document = await _ingestDocumentUseCase.ExecuteAsync(
-                fileStream,
+                readStream,
                 fileName,
                 mimeType,
                 fileSize,
@@ -77,10 +102,15 @@ public class IngestionOrchestrator
                 rawText.Length);
 
             var parseResult = _parseDocumentUseCase.Execute(rawText, document.DocumentType);
-            document.SetExtractedLineItems(parseResult.LineItems);
 
             if (document.DocumentType == DocumentType.Desconhecido)
                 document.SetDocumentType(parseResult.DocumentType);
+            else if (document.DocumentType == DocumentType.NotaFiscal
+                     && parseResult.DocumentType != DocumentType.NotaFiscal
+                     && parseResult.DocumentType != DocumentType.Desconhecido)
+                document.SetDocumentType(parseResult.DocumentType);
+
+            document.SetExtractedLineItems(parseResult.LineItems);
 
             document.MarkAsProcessed();
             _logger.LogInformation(
@@ -95,9 +125,22 @@ public class IngestionOrchestrator
                     new[] { "RawText vazio após processamento" });
             }
 
-            await _publishRawEventUseCase.PublishAsync(document, cancellationToken);
+            var publishOutcome = await _publishRawEventUseCase.PublishAsync(document, cancellationToken);
 
-            return IngestionOrchestratorResult.Success(document);
+            if (!string.IsNullOrWhiteSpace(tenantId) && _uploadDedup is not null)
+            {
+                _uploadDedup.Remember(
+                    tenantId,
+                    fileHash,
+                    new IngestionDedupEntry(
+                        document.Id,
+                        document.TenantId,
+                        document.DocumentType.ToString(),
+                        document.ExtractedLineItems.Count,
+                        publishOutcome.DataIngestedEventPublished));
+            }
+
+            return IngestionOrchestratorResult.Success(document, publishOutcome.DataIngestedEventPublished);
         }
         catch (Exception ex)
         {

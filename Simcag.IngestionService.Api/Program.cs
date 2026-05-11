@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Microsoft.Extensions.Options;
 using Simcag.IngestionService.Application.Services;
 using Simcag.IngestionService.Application.UseCases;
 using Simcag.IngestionService.Infrastructure.Ocr;
@@ -57,6 +56,8 @@ builder.Services.AddSingleton<IPdfParserService, PdfParserService>();
 builder.Services.AddSingleton<IExcelParserService, ExcelParserService>();
 
 // Register Application services
+builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<IIngestionUploadDedupStore, IngestionUploadDedupMemoryStore>();
 builder.Services.AddSingleton<IIngestionService, IngestionServiceImpl>();
 builder.Services.AddSingleton<IProductValidationService, ProductValidationService>();
 builder.Services.AddSingleton<IngestionOrchestrator>();
@@ -104,6 +105,7 @@ var eventsExchange = EventBusConstants.GetEventsExchangeName();
 
 // Register RabbitMQ publisher for Simcag.Shared.Events.RawFinancialDataEvent
 builder.Services.AddRabbitMqEventPublisher<Simcag.Shared.Events.RawFinancialDataEvent>(eventsExchange);
+builder.Services.AddRabbitMqEventPublisher<Simcag.Shared.Events.DataIngestedEvent>(eventsExchange);
 
 builder.Services.AddRabbitMqEventPublisher<Simcag.Shared.Events.PriceCollectedEvent>(eventsExchange);
 
@@ -124,7 +126,6 @@ app.MapHealthChecks("/health/live", new HealthCheckOptions
 {
     Predicate = registration => registration.Tags?.Contains("live") == true,
 });
-app.MapFallbackToFile("index.html");
 
 app.Run();
 
