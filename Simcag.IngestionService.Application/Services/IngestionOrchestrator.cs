@@ -31,6 +31,10 @@ public class IngestionOrchestrator
         _logger = logger;
     }
 
+    /// <summary>Chave estável para dedupe: mesmo ficheiro sem tenant no pedido continua a casar com uploads anteriores.</summary>
+    private static string NormalizeDedupTenantKey(string? tenantId) =>
+        string.IsNullOrWhiteSpace(tenantId) ? "__no_tenant__" : tenantId.Trim();
+
     public async Task<IngestionOrchestratorResult> OrchestrateIngestionAsync(
         Stream fileStream,
         string fileName,
@@ -57,10 +61,10 @@ public class IngestionOrchestrator
             }
 
             var fileHash = FileHash.ComputeSha256(fileBytes);
+            var dedupTenant = NormalizeDedupTenantKey(tenantId);
             if (!forceNewDocument
-                && !string.IsNullOrWhiteSpace(tenantId)
                 && _uploadDedup is not null
-                && _uploadDedup.TryGet(tenantId, fileHash, out var prior))
+                && _uploadDedup.TryGet(dedupTenant, fileHash, out var prior))
             {
                 return IngestionOrchestratorResult.Duplicate(prior);
             }
@@ -127,10 +131,10 @@ public class IngestionOrchestrator
 
             var publishOutcome = await _publishRawEventUseCase.PublishAsync(document, cancellationToken);
 
-            if (!string.IsNullOrWhiteSpace(tenantId) && _uploadDedup is not null)
+            if (_uploadDedup is not null)
             {
                 _uploadDedup.Remember(
-                    tenantId,
+                    dedupTenant,
                     fileHash,
                     new IngestionDedupEntry(
                         document.Id,

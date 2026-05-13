@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Simcag.IngestionService.Application.Configuration;
 using Simcag.IngestionService.Application.Services;
 using Simcag.IngestionService.Application.UseCases;
+using Simcag.IngestionService.Infrastructure.Dedup;
 using Simcag.IngestionService.Infrastructure.Ocr;
 using Simcag.IngestionService.Infrastructure.Parser;
 using Simcag.Shared.Events;
@@ -14,12 +16,16 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text.RegularExpressions;
 using System.IO;
+using StackExchange.Redis;
 
 DotNetEnv.Env.NoClobber().Load();
 ContainerListenConfiguration.NormalizeAspNetCoreListenUrlsInContainer();
 
 var builder = WebApplication.CreateBuilder(args);
 ContainerListenConfiguration.ApplyDockerListenUrls(builder);
+
+builder.Services.Configure<IngestionEventPublishingOptions>(
+    builder.Configuration.GetSection(IngestionEventPublishingOptions.SectionKey));
 
 var urls = GetListeningUrl();
 builder.WebHost.UseUrls(urls);
@@ -57,16 +63,43 @@ builder.Services.AddSingleton<IExcelParserService, ExcelParserService>();
 
 // Register Application services
 builder.Services.AddMemoryCache();
-builder.Services.AddSingleton<IIngestionUploadDedupStore, IngestionUploadDedupMemoryStore>();
-builder.Services.AddSingleton<IIngestionService, IngestionServiceImpl>();
-builder.Services.AddSingleton<IProductValidationService, ProductValidationService>();
-builder.Services.AddSingleton<IngestionOrchestrator>();
+
+static string? RedisDedupConnection()
+{
+    foreach (var key in new[] { "REDIS__CONNECTION", "REDIS_CONNECTION" })
+    {
+        var v = Environment.GetEnvironmentVariable(key);
+        if (string.IsNullOrWhiteSpace(v))
+            continue;
+        var t = v.Trim();
+        if (string.Equals(t, "memory", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(t, "inmemory", StringComparison.OrdinalIgnoreCase))
+            return null;
+        return t;
+    }
+    return null;
+}
+
+var redisDedupConn = RedisDedupConnection();
+if (redisDedupConn is not null)
+{
+    builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisDedupConn));
+    builder.Services.AddSingleton<IIngestionUploadDedupStore, IngestionUploadDedupRedisStore>();
+}
+else
+{
+    builder.Services.AddSingleton<IIngestionUploadDedupStore, IngestionUploadDedupMemoryStore>();
+}
+
+builder.Services.AddScoped<IIngestionService, IngestionServiceImpl>();
+builder.Services.AddScoped<IProductValidationService, ProductValidationService>();
+builder.Services.AddScoped<IngestionOrchestrator>();
 
 // Register Use Cases
-builder.Services.AddSingleton<IIngestDocumentUseCase, IngestDocumentUseCase>();
-builder.Services.AddSingleton<IExtractTextUseCase, ExtractTextUseCase>();
-builder.Services.AddSingleton<IParseDocumentUseCase, ParseDocumentUseCase>();
-builder.Services.AddSingleton<IPublishRawEventUseCase, PublishRawEventUseCase>();
+builder.Services.AddScoped<IIngestDocumentUseCase, IngestDocumentUseCase>();
+builder.Services.AddScoped<IExtractTextUseCase, ExtractTextUseCase>();
+builder.Services.AddScoped<IParseDocumentUseCase, ParseDocumentUseCase>();
+builder.Services.AddScoped<IPublishRawEventUseCase, PublishRawEventUseCase>();
 
 static string? RmqEnv(params string[] keys)
 {

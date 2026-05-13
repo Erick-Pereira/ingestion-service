@@ -20,7 +20,7 @@ public sealed class IngestionUploadDedupMemoryStore : IIngestionUploadDedupStore
     public bool TryGet(string tenantId, FileHash fileHash, out IngestionDedupEntry entry)
     {
         entry = default!;
-        var key = BuildKey(tenantId, fileHash);
+        var key = IngestionUploadDedupKeys.Build(tenantId, fileHash);
         if (!_cache.TryGetValue(key, out IngestionDedupEntry? cached) || cached is null)
             return false;
 
@@ -35,10 +35,7 @@ public sealed class IngestionUploadDedupMemoryStore : IIngestionUploadDedupStore
 
     public void Remember(string tenantId, FileHash fileHash, IngestionDedupEntry entry)
     {
-        var key = BuildKey(tenantId, fileHash);
+        var key = IngestionUploadDedupKeys.Build(tenantId, fileHash);
         _cache.Set(key, entry, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = Ttl });
     }
-
-    private static string BuildKey(string tenantId, FileHash fileHash) =>
-        $"ingestion:upload:{tenantId.Trim().ToLowerInvariant()}:{fileHash.Value}";
 }

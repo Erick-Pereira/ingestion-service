@@ -1,5 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Simcag.IngestionService.Application.Configuration;
 using Simcag.IngestionService.Domain.Entities;
 using Simcag.IngestionService.Domain.Enums;
 using Simcag.Shared.Events;
@@ -10,7 +12,7 @@ namespace Simcag.IngestionService.Application.UseCases;
 /// <summary>
 /// Publica eventos no RabbitMQ após ingestão:
 /// <list type="bullet">
-/// <item><description><see cref="RawFinancialDataEvent"/> — consumido pelo AI Service (enriquecimento assíncrono).</description></item>
+/// <item><description><see cref="RawFinancialDataEvent"/> — legado; consumido pelo AI Service enquanto <c>Ingestion:PublishLegacyRawFinancialEvent</c> for <c>true</c> (ver <c>.env.example</c>).</description></item>
 /// <item><description><see cref="DataIngestedEvent"/> — canónico v1 para o Processing Service, quando há <c>TenantId</c> e <c>DocumentId</c> válidos como GUID.</description></item>
 /// </list>
 /// Enriquecimento por IA entre serviços deve usar apenas este fluxo assíncrono (evita HTTP síncrono duplicado).
@@ -20,15 +22,18 @@ public class PublishRawEventUseCase : IPublishRawEventUseCase
     private readonly IEventPublisher<RawFinancialDataEvent> _legacyRawPublisher;
     private readonly IEventPublisher<DataIngestedEvent> _dataIngestedPublisher;
     private readonly ILogger<PublishRawEventUseCase> _logger;
+    private readonly IngestionEventPublishingOptions _publishOptions;
 
     public PublishRawEventUseCase(
         IEventPublisher<RawFinancialDataEvent> legacyRawPublisher,
         IEventPublisher<DataIngestedEvent> dataIngestedPublisher,
-        ILogger<PublishRawEventUseCase> logger)
+        ILogger<PublishRawEventUseCase> logger,
+        IOptions<IngestionEventPublishingOptions> publishOptions)
     {
         _legacyRawPublisher = legacyRawPublisher;
         _dataIngestedPublisher = dataIngestedPublisher;
         _logger = logger;
+        _publishOptions = publishOptions.Value;
     }
 
     public async Task<RawEventPublishOutcome> PublishAsync(RawDocument document, CancellationToken cancellationToken = default)
@@ -52,13 +57,22 @@ public class PublishRawEventUseCase : IPublishRawEventUseCase
 
         try
         {
-            await _legacyRawPublisher.PublishAsync(rawEvent, cancellationToken);
+            if (_publishOptions.PublishLegacyRawFinancialEvent)
+            {
+                await _legacyRawPublisher.PublishAsync(rawEvent, cancellationToken);
 
-            _logger.LogInformation(
-                "RawFinancialDataEvent publicado para documento {DocumentId} | Tipo: {DocType} | Itens: {ItemCount}",
-                document.Id,
-                document.DocumentType,
-                document.ExtractedLineItems.Count);
+                _logger.LogInformation(
+                    "RawFinancialDataEvent publicado para documento {DocumentId} | Tipo: {DocType} | Itens: {ItemCount}",
+                    document.Id,
+                    document.DocumentType,
+                    document.ExtractedLineItems.Count);
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "RawFinancialDataEvent omitido (Ingestion:PublishLegacyRawFinancialEvent=false) para documento {DocumentId}",
+                    document.Id);
+            }
 
             if (TryBuildDataIngestedEvent(document, out var dataIngested))
             {
