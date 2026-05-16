@@ -39,8 +39,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          SDK_IMG="mcr.microsoft.com/dotnet/sdk:10.0-bookworm-slim"
-          RUN_IMG="mcr.microsoft.com/dotnet/aspnet:10.0-bookworm-slim"
+          SDK_IMG="mcr.microsoft.com/dotnet/sdk:10.0-noble"
+          RUN_IMG="mcr.microsoft.com/dotnet/aspnet:10.0-noble"
           for attempt in 1 2 3 4 5; do
             if docker pull "$SDK_IMG" && docker pull "$RUN_IMG"; then
               exit 0
