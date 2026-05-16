@@ -107,4 +107,83 @@ public class ParseDocumentUseCaseTests
             || li.Description.Contains("referentes ao mês", StringComparison.OrdinalIgnoreCase));
         Assert.Equal(20350m, result.LineItems.Where(li => li.Amount != null).Sum(li => li.Amount!.Amount));
     }
+
+    /// <summary>
+    /// PdfPig cola rótulos + valores (centavos com espaço); CNPJ sem barra não pode virar montante milhões.
+    /// </summary>
+    [Fact]
+    public void Execute_condominio_recibo_colado_extrai_itens_e_ignora_cnpj()
+    {
+        var raw = """
+            NOTA FISCAL RECIBO CONDOMINIALCondomínio Residencial Jardim das PalmeirasCNPJ 12 345 678 0001-90
+            Rua das Flores 245 CompetênciaMaio 2026
+            DescriçãoValor R Taxa Condominial650 00Fundo de Reserva85 00Consumo de Água120 00Manutenção Elevador45 00Taxa Extraordinária100 00TOTAL Este documento
+            """;
+
+        var result = _sut.Execute(raw, DocumentType.NotaFiscal);
+
+        Assert.DoesNotContain(
+            result.LineItems,
+            li => li.Amount is { Amount: 12345678m });
+        Assert.Contains(result.LineItems, li => li.Amount != null && li.Amount.Amount == 650m);
+        Assert.Contains(result.LineItems, li => li.Amount != null && li.Amount.Amount == 85m);
+        Assert.Contains(result.LineItems, li => li.Amount != null && li.Amount.Amount == 120m);
+        Assert.Contains(result.LineItems, li => li.Amount != null && li.Amount.Amount == 45m);
+        Assert.Contains(result.LineItems, li => li.Amount != null && li.Amount.Amount == 100m);
+        Assert.Equal(5, result.LineItems.Count(li => li.Amount != null));
+        Assert.Equal(1000m, result.LineItems.Where(li => li.Amount != null).Sum(li => li.Amount!.Amount));
+    }
+
+    [Fact]
+    public void Execute_recibo_pagamento_itemvalor_r_extrai_linhas()
+    {
+        var raw = """
+            RECIBO DE PAGAMENTO CONDOMINIAL Condomínio Vista Mar CNPJ 45 987 321 0001-10
+            ItemValor R Condomínio Mensal780 00Energia Área Comum95 00Serviço de Limpeza60 00Segurança140 00VALOR TOTAL Declaro
+            """;
+
+        var result = _sut.Execute(raw, DocumentType.Recibo);
+
+        Assert.DoesNotContain(result.LineItems, li => li.Amount is { Amount: >= 1_000_000m });
+        Assert.Contains(result.LineItems, li => li.Amount != null && li.Amount.Amount == 780m);
+        Assert.Contains(result.LineItems, li => li.Amount != null && li.Amount.Amount == 95m);
+        Assert.Contains(result.LineItems, li => li.Amount != null && li.Amount.Amount == 60m);
+        Assert.Contains(result.LineItems, li => li.Amount != null && li.Amount.Amount == 140m);
+        Assert.Equal(1075m, result.LineItems.Where(li => li.Amount != null).Sum(li => li.Amount!.Amount));
+    }
+
+    [Fact]
+    public void Execute_nfse_prefeitura_fortaleza_extrai_linha_por_valor_liquido_quando_discriminacao_truncada()
+    {
+        var raw = """
+            PREFEITURA MUNICIPAL DE FORTALEZA NOTA FISCAL DE SERVIÇOS ELETRÔNICA - NFS-e
+            PRESTADOR Condomínio Residencial Atlântico Sul CNPJ 18 456 782 0001-22
+            DISCRIMINAÇÃO DOS SERVIÇOS
+            DescriçãoQtdValor Unit Valor TotalTaxa Condominial - Competência Maior/2026
+            Valor Líquido do Serviço R$ 1.500,75
+            """;
+
+        var result = _sut.Execute(raw, DocumentType.NotaFiscal);
+
+        Assert.Single(result.LineItems, li => li.Amount != null);
+        Assert.Contains(result.LineItems, li => li.Amount != null && li.Amount.Amount == 1500.75m);
+        Assert.Contains(result.LineItems, li => li.Description.Contains("Taxa Condominial", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Execute_nfse_discriminacao_com_valor_na_linha()
+    {
+        var raw = """
+            NOTA FISCAL DE SERVIÇOS ELETRÔNICA NFS-e PREFEITURA X
+            DISCRIMINAÇÃO DOS SERVIÇOS
+            DescriçãoQtdValor Unit Valor Total
+            Serviço limpeza450,50Manutenção predial1.250,75
+            """;
+
+        var result = _sut.Execute(raw, DocumentType.NotaFiscal);
+
+        Assert.Equal(2, result.LineItems.Count(li => li.Amount != null));
+        Assert.Contains(result.LineItems, li => li.Amount != null && li.Amount.Amount == 450.50m);
+        Assert.Contains(result.LineItems, li => li.Amount != null && li.Amount.Amount == 1250.75m);
+    }
 }

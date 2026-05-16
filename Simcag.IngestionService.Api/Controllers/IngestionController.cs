@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Simcag.IngestionService.Api.Contracts;
 using Simcag.IngestionService.Application.Services;
 using Simcag.IngestionService.Domain.Enums;
+using Simcag.Shared.Security;
 
 namespace Simcag.IngestionService.Api.Controllers;
 
@@ -122,7 +123,7 @@ public class IngestionController : ControllerBase
                 publishedDataIngestedEvent = result.PublishedDataIngestedEvent,
                 processingNote = result.PublishedDataIngestedEvent
                     ? null
-                    : "DataIngestedEvent não foi publicado: envie TenantId como GUID válido ou use o gateway com JWT (header X-Tenant-Id). Sem este evento o Processing Service não persiste despesa."
+                    : "DataIngestedEvent não foi publicado: envie TenantId como GUID válido ou use o gateway com JWT (header " + GatewayForwardedAuthHeaders.TenantId + "). Sem este evento o Processing Service não persiste despesa."
             });
         }
         catch (Exception ex)
@@ -138,7 +139,7 @@ public class IngestionController : ControllerBase
     }
 
     /// <summary>
-    /// GUID do formulário tem prioridade; se inválido ou vazio, usa <c>X-Tenant-Id</c> (gateway injeta a partir do JWT).
+    /// GUID do formulário tem prioridade; se inválido ou vazio, usa <see cref="GatewayForwardedAuthHeaders.TenantId"/> (gateway injeta a partir do JWT).
     /// </summary>
     private static string? ResolveTenantId(string? formTenantId, IHeaderDictionary headers)
     {
@@ -148,7 +149,7 @@ public class IngestionController : ControllerBase
             && formGuid != Guid.Empty)
             return formGuid.ToString();
 
-        if (!headers.TryGetValue("X-Tenant-Id", out var headerVals))
+        if (!headers.TryGetValue(GatewayForwardedAuthHeaders.TenantId, out var headerVals))
             return null;
 
         var header = headerVals.FirstOrDefault()?.Trim();

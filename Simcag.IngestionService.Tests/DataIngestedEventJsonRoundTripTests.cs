@@ -55,8 +55,13 @@ public sealed class DataIngestedEventJsonRoundTripTests
         var json = """{"amount":20350,"description":"BALANCE_SHEET — 9 itens","lines":[{"description":"Item A","amount":10}],"extra":{"lineItemCount":9}}""";
 
         var strict = JsonSerializer.Deserialize<ExtractedFields>(json);
-        Assert.True(strict?.Lines is null || strict.Lines.Count == 0,
-            "strict matching should not bind nested lines from camelCase JSON");
+        // Raiz: "amount" ≠ "Amount" sem PropertyNameCaseInsensitive
+        Assert.Null(strict?.Amount);
+        // Linhas: <see cref="ExtractedFields.Lines"/> tem [JsonPropertyName("lines")] — faz bind com JSON camelCase.
+        Assert.NotNull(strict?.Lines);
+        Assert.Single(strict.Lines);
+        Assert.Equal("Item A", strict.Lines[0].Description);
+        Assert.Equal(10m, strict.Lines[0].Amount);
 
         var relaxed = JsonSerializer.Deserialize<ExtractedFields>(json, new JsonSerializerOptions
         {
@@ -66,5 +71,6 @@ public sealed class DataIngestedEventJsonRoundTripTests
         Assert.Single(relaxed.Lines);
         Assert.Equal("Item A", relaxed.Lines[0].Description);
         Assert.Equal(10m, relaxed.Lines[0].Amount);
+        Assert.Equal(20350m, relaxed.Amount);
     }
 }

@@ -1,7 +1,7 @@
 # Multi-stage — contexto: pasta ingestion-service (monorepo) ou repo standalone.
 # Simcag.Shared: GitHub Packages (TOKEN + NUGET_GITHUB_OWNER).
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS builder
+FROM mcr.microsoft.com/dotnet/sdk:10.0-bookworm-slim AS builder
 
 WORKDIR /src
 
@@ -32,7 +32,7 @@ RUN dotnet publish "Simcag.IngestionService.Api/Simcag.IngestionService.Api.cspr
     --no-restore \
     /p:UseAppHost=false
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-bookworm-slim AS runtime
 
 WORKDIR /app
 

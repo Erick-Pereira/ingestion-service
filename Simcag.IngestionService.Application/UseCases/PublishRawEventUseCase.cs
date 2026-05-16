@@ -5,6 +5,7 @@ using Simcag.IngestionService.Application.Configuration;
 using Simcag.IngestionService.Domain.Entities;
 using Simcag.IngestionService.Domain.Enums;
 using Simcag.Shared.Events;
+using Simcag.Shared.Finance;
 using Simcag.Shared.Messaging.Contracts;
 
 namespace Simcag.IngestionService.Application.UseCases;
@@ -242,7 +243,8 @@ public class PublishRawEventUseCase : IPublishRawEventUseCase
             if (amt <= 0 && string.IsNullOrWhiteSpace(li.Description))
                 continue;
 
-            list.Add(new FinancialItem { Description = desc, Amount = amt });
+            list.Add(FinancialLineItemSemanticNormalizer.NormalizeFinancialItem(
+                new FinancialItem { Description = desc, Amount = amt }));
         }
 
         return list.Count > 0 ? list : null;

@@ -11,11 +11,11 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.5" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.5" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.5" />
+    <PackageReference Include="Simcag.Shared" Version="1.0.5" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Simcag.IngestionService.Domain\Simcag.IngestionService.Domain.csproj" />
-    <PackageReference Include="Simcag.Shared" Version="1.0.4" />
   </ItemGroup>
 
   <ItemGroup>

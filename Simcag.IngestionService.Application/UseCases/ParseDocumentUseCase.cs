@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Simcag.IngestionService.Domain.Entities;
 using Simcag.IngestionService.Domain.Enums;
 using Simcag.IngestionService.Domain.ValueObjects;
+using Simcag.Shared.Finance;
 
 namespace Simcag.IngestionService.Application.UseCases;
 
@@ -20,16 +21,32 @@ public class ParseDocumentUseCase : IParseDocumentUseCase
     {
         ArgumentNullException.ThrowIfNull(rawText);
 
-        var resolvedType = ResolveDocumentType(documentType, rawText);
+        // CNPJ/CPF com pontos ou blocos "12 345 678 0001-90" casavam como "valores" milhar (ExtractAmount).
+        var sanitized = MaskBrazilianTaxIds(rawText);
+
+        var resolvedType = ResolveDocumentType(documentType, sanitized);
 
         List<ExtractedLineItem> lineItems;
-        if (ShouldUseCompactCondominioExtraction(rawText, resolvedType))
+        var nfseItems = TryExtractGluedNfseDiscriminacaoLineItems(sanitized);
+        if (nfseItems.Count >= 1)
         {
-            var compact = ExtractCompactCondominioExpenseRows(rawText);
-            lineItems = compact.Count >= 3 ? compact : ParseLineItems(rawText, resolvedType);
+            lineItems = nfseItems;
         }
         else
-            lineItems = ParseLineItems(rawText, resolvedType);
+        {
+            var gluedInvoice = TryExtractGluedCondominioInvoiceLineItems(sanitized);
+            if (gluedInvoice.Count >= 2)
+            {
+                lineItems = gluedInvoice;
+            }
+            else if (ShouldUseCompactCondominioExtraction(sanitized, resolvedType))
+            {
+                var compact = ExtractCompactCondominioExpenseRows(sanitized);
+                lineItems = compact.Count >= 3 ? compact : ParseLineItems(sanitized, resolvedType);
+            }
+            else
+                lineItems = ParseLineItems(sanitized, resolvedType);
+        }
 
         _logger.LogDebug(
             "Parsing concluído: {LineCount} itens | tipo resolvido: {DocType}",
@@ -37,6 +54,346 @@ public class ParseDocumentUseCase : IParseDocumentUseCase
             resolvedType);
 
         return new ParseDocumentResult(lineItems, resolvedType);
+    }
+
+    /// <summary>
+    /// Remove padrões de CNPJ/CPF para não serem interpretados como montantes (ex.: <c>12.345.678</c> dentro de CNPJ).
+    /// </summary>
+    private static string MaskBrazilianTaxIds(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+            return input;
+
+        // CNPJ sem barra: "12 345 678 0001-90" (comum em PDFs condominiais)
+        input = Regex.Replace(
+            input,
+            @"\b\d{2}\s+\d{3}\s+\d{3}\s+\d{4}\s*-\s*\d{2}\b",
+            " #CNPJ# ",
+            RegexOptions.CultureInvariant);
+        // CNPJ com barra / pontos
+        input = Regex.Replace(
+            input,
+            @"\b\d{2}[\s\.]?\d{3}[\s\.]?\d{3}\s*/\s*\d{4}[\s\-]?\d{2}\b",
+            " #CNPJ# ",
+            RegexOptions.CultureInvariant);
+        // CPF
+        input = Regex.Replace(
+            input,
+            @"\b\d{3}[\s\.]?\d{3}[\s\.]?\d{3}[\s\-]?\d{2}\b",
+            " #CPF# ",
+            RegexOptions.CultureInvariant);
+
+        return input;
+    }
+
+    /// <summary>
+    /// PdfPig cola tabelas tipo "Taxa Condominial650 00Fundo de Reserva85 00" (centavos separados por espaço).
+    /// </summary>
+    private static bool LooksLikeGluedCondominioInvoice(string text)
+    {
+        var u = text.ToUpperInvariant();
+        if (!u.Contains("CONDOM", StringComparison.Ordinal))
+            return false;
+
+        var invoiceCue =
+            u.Contains("RECIBO", StringComparison.Ordinal)
+            || u.Contains("NFS", StringComparison.Ordinal)
+            || u.Contains("COBRAN", StringComparison.Ordinal)
+            || u.Contains("VALOR R", StringComparison.Ordinal)
+            || u.Contains("ITEMVALOR", StringComparison.Ordinal)
+            || u.Contains("DISCRIMIN", StringComparison.Ordinal);
+
+        if (!invoiceCue)
+            return false;
+
+        // Pelo menos um bloco "…00Letra" (fim de valor em centavos colado ao próximo rótulo, ex.: "650 00Fundo")
+        return Regex.IsMatch(text, @"\d{2}(?=[A-Za-zÀ-ÿ])", RegexOptions.CultureInvariant);
+    }
+
+    private static string? TrySliceCondominioChargesSection(string raw)
+    {
+        var bestStart = -1;
+        foreach (var marker in new[]
+                 {
+                     "Discriminação dos Serviços",
+                     "Discriminacao dos Servicos",
+                     "DescriçãoValor",
+                     "DescricaoValor",
+                     "ItemValor",
+                     "Item Valor",
+                     "Valor R",
+                 })
+        {
+            var i = raw.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (i < 0)
+                continue;
+            var endPos = i + marker.Length;
+            if (endPos > bestStart)
+                bestStart = endPos;
+        }
+
+        if (bestStart < 0)
+            return null;
+
+        var end = raw.Length;
+        foreach (var endMarker in new[]
+                 {
+                     "Valor total dos serviços",
+                     "Valor Total dos Serviços",
+                     "VALOR TOTAL DO SERVIÇO",
+                     "Valor Total do Serviço",
+                     "VALOR TOTAL DA NOTA",
+                     "Valor Total da Nota",
+                     // Evitar "VALOR TOTAL" isolado: na NFS-e cola-se "Valor TotalTaxa…" (cabeçalho da tabela).
+                     "VALOR TOTAL Declaro",
+                     "VALOR TOTAL Declar",
+                     "TOTAL ESTE",
+                     "TOTAL Este",
+                     "TOTAIS",
+                     "Administrador Responsável",
+                     "Administrador Responsavel",
+                     "Síndico Responsável",
+                     "Sindico Responsavel",
+                 })
+        {
+            var j = raw.IndexOf(endMarker, bestStart, StringComparison.OrdinalIgnoreCase);
+            if (j >= 0)
+                end = Math.Min(end, j);
+        }
+
+        if (end <= bestStart)
+            return null;
+
+        return raw[bestStart..end].Trim();
+    }
+
+    private static string TrimSectionBeforeMarkers(string section, params string[] markers)
+    {
+        var end = section.Length;
+        foreach (var m in markers)
+        {
+            var i = section.IndexOf(m, StringComparison.OrdinalIgnoreCase);
+            if (i >= 0)
+                end = Math.Min(end, i);
+        }
+
+        return section[..end].Trim();
+    }
+
+    private static List<ExtractedLineItem> TryExtractGluedCondominioInvoiceLineItems(string text)
+    {
+        var list = new List<ExtractedLineItem>();
+        if (!LooksLikeGluedCondominioInvoice(text))
+            return list;
+
+        var section = TrySliceCondominioChargesSection(text);
+        if (string.IsNullOrWhiteSpace(section))
+            return list;
+
+        section = section.Replace('\u00a0', ' ').Trim();
+
+        // "…650 00Fundo de Reserva85 00…" → partes por limite centavos + próximo rótulo ("00Manutenção", "00Fundo")
+        var parts = Regex
+            .Split(section, @"(?<=\d{2})(?=[A-Za-zÀ-ÿ])")
+            .Select(p => p.Trim())
+            .Where(p => p.Length > 3)
+            .ToList();
+
+        var lineNo = 1;
+        foreach (var chunk in parts)
+        {
+            if (chunk.Contains("TOTAL", StringComparison.OrdinalIgnoreCase)
+                && chunk.Length < 40)
+                continue;
+
+            decimal? amt = null;
+            string desc;
+
+            var mSpace = Regex.Match(
+                chunk,
+                @"^(?<desc>.+?)(?<int>\d{1,5})\s+(?<cent>\d{2})$",
+                RegexOptions.CultureInvariant);
+            if (mSpace.Success
+                && int.TryParse(mSpace.Groups["int"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var intPart)
+                && int.TryParse(mSpace.Groups["cent"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var centPart)
+                && centPart is >= 0 and < 100)
+            {
+                amt = intPart + centPart / 100m;
+                desc = mSpace.Groups["desc"].Value.Trim();
+            }
+            else
+            {
+                var mBr = Regex.Match(
+                    chunk,
+                    @"^(?<desc>.+?)(?<br>\d{1,3}(?:\.\d{3})*,\d{2})$",
+                    RegexOptions.CultureInvariant);
+                if (!mBr.Success || !TryParseBrazilianMoney(mBr.Groups["br"].Value, out var brAmt))
+                    continue;
+                amt = brAmt;
+                desc = mBr.Groups["desc"].Value.Trim();
+            }
+
+            if (amt is null or <= 0m || string.IsNullOrWhiteSpace(desc))
+                continue;
+            if (desc.Length > 200 || amt > 500_000m)
+                continue;
+
+            list.Add(new ExtractedLineItem(
+                lineNumber: lineNo++,
+                amount: new Money(amt.Value, "BRL"),
+                date: null,
+                description: desc,
+                rawLine: chunk.Length > 400 ? chunk[..400] : chunk,
+                confidenceScore: 82));
+        }
+
+        return list;
+    }
+
+    /// <summary>
+    /// NFS-e municipal (ex. Fortaleza): PdfPig cola "DISCRIMINAÇÃO…DescriçãoQtdValor Unit Valor Total" + linhas de serviço.
+    /// Quando o PDF trunca antes do valor na discriminação, tenta-se ler totais do corpo (Valor Líquido, etc.).
+    /// </summary>
+    private static bool LooksLikeGluedNfsePrefeitura(string text)
+    {
+        var u = text.ToUpperInvariant();
+        if (!u.Contains("NFS", StringComparison.Ordinal) && !u.Contains("NOTA FISCAL DE SERV", StringComparison.Ordinal))
+            return false;
+        if (!u.Contains("DISCRIMIN", StringComparison.Ordinal))
+            return false;
+
+        return u.Contains("PREFEITURA", StringComparison.Ordinal)
+               || u.Contains("TOMADOR", StringComparison.Ordinal)
+               || u.Contains("PRESTADOR", StringComparison.Ordinal)
+               || u.Contains("VALOR UNIT", StringComparison.Ordinal);
+    }
+
+    private static List<ExtractedLineItem> TryExtractGluedNfseDiscriminacaoLineItems(string text)
+    {
+        var list = new List<ExtractedLineItem>();
+        if (!LooksLikeGluedNfsePrefeitura(text))
+            return list;
+
+        var section = TrySliceCondominioChargesSection(text);
+        if (string.IsNullOrWhiteSpace(section))
+            return list;
+
+        section = section.Replace('\u00a0', ' ').Trim();
+        var sectionForRows = TrimSectionBeforeMarkers(
+            section,
+            "Valor Líquido",
+            "VALOR LÍQUIDO",
+            "Valor do ISS",
+            "Base de Cálculo",
+            "Valor Aproximado");
+
+        sectionForRows = StripNfseDiscriminacaoColumnHeaders(sectionForRows);
+
+        var fromRows = ExtractNfseDiscriminacaoValueRows(sectionForRows);
+        if (fromRows.Count > 0)
+            return fromRows;
+
+        var total = TrySniffNfseServiceTotalBrl(text);
+        if (total is null || total <= 0m)
+            return list;
+
+        var desc = Regex.Replace(sectionForRows, @"\s+", " ").Trim();
+        if (desc.Length > 220)
+            desc = desc[..220];
+        if (desc.Length < 6)
+            return list;
+
+        list.Add(new ExtractedLineItem(
+            lineNumber: 1,
+            amount: new Money(total.Value, "BRL"),
+            date: null,
+            description: desc,
+            rawLine: desc.Length > 400 ? desc[..400] : desc,
+            confidenceScore: 68));
+
+        return list;
+    }
+
+    private static string StripNfseDiscriminacaoColumnHeaders(string s)
+    {
+        if (string.IsNullOrEmpty(s))
+            return s;
+
+        // PdfPig cola "…Valor TotalTaxa…" (sem espaço após Total) — não usar \b após "Total".
+        s = Regex.Replace(s, @"^\s*.*?\bValor\s*Total", "", RegexOptions.IgnoreCase);
+        return s.Trim();
+    }
+
+    private static List<ExtractedLineItem> ExtractNfseDiscriminacaoValueRows(string section)
+    {
+        var list = new List<ExtractedLineItem>();
+        // Itens colados: "…450,50Manutenção…" — partir após centavos antes da próxima palavra capitalizada.
+        var pieces = Regex
+            .Split(section, @"(?<=,\d{2})(?=[A-ZÀ-ÿ][a-zà-ÿ])")
+            .Select(p => p.Trim())
+            .Where(p => p.Length > 4)
+            .ToList();
+
+        var lineRx = new Regex(
+            @"^(?<desc>.+?)(?<amt>(?:\d{1,3}(?:\.\d{3})+,\d{2})|(?:\d{1,6},\d{2}))$",
+            RegexOptions.CultureInvariant);
+        var lineNo = 1;
+        foreach (var piece in pieces)
+        {
+            var m = lineRx.Match(piece);
+            if (!m.Success)
+                continue;
+            var desc = m.Groups["desc"].Value.Trim();
+            var amtRaw = m.Groups["amt"].Value;
+            if (IsNfseJunkDescription(desc))
+                continue;
+            if (!TryParseBrazilianMoney(amtRaw, out var amt) || amt <= 0m || amt > 500_000m)
+                continue;
+
+            list.Add(new ExtractedLineItem(
+                lineNumber: lineNo++,
+                amount: new Money(amt, "BRL"),
+                date: null,
+                description: desc,
+                rawLine: piece.Length > 400 ? piece[..400] : piece,
+                confidenceScore: 80));
+        }
+
+        return list;
+    }
+
+    private static bool IsNfseJunkDescription(string desc)
+    {
+        if (desc.Length > 240)
+            return true;
+        var u = desc.ToUpperInvariant();
+        return u.Contains("PRESTADOR", StringComparison.Ordinal)
+               || u.Contains("TOMADOR", StringComparison.Ordinal)
+               || u.Contains("PREFEITURA", StringComparison.Ordinal)
+               || u.Contains("ENDEREÇO", StringComparison.Ordinal)
+               || u.Contains("ENDERECO", StringComparison.Ordinal);
+    }
+
+    private static decimal? TrySniffNfseServiceTotalBrl(string text)
+    {
+        var patterns = new[]
+        {
+            @"Valor\s+L[ií]quido\s+d[oa]\s+Servi[cç]o\s+R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})",
+            @"Valor\s+L[ií]quido\s+R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})",
+            @"Valor\s+Total\s+d[oa]\s+Servi[cç]o\s+R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})",
+            @"Valor\s+Total\s+R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})",
+            @"Valor\s+d[oa]\s+Servi[cç]o\s+R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})",
+            @"Total\s+d[oa]\s+Nota\s+R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})",
+        };
+
+        foreach (var p in patterns)
+        {
+            var m = Regex.Match(text, p, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (m.Success && TryParseBrazilianMoney(m.Groups[1].Value, out var d) && d > 0m)
+                return d;
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -227,8 +584,7 @@ public class ParseDocumentUseCase : IParseDocumentUseCase
             return true;
 
         return Regex.IsMatch(line, @"\d{1,3}(?:\.\d{3})*(?:,\d{2})\b")
-               || Regex.IsMatch(line, @"\d+,\d{2}\b")
-               || Regex.IsMatch(line, @"\b\d{1,3}(?:\.\d{3})+\b");
+               || Regex.IsMatch(line, @"\d+,\d{2}\b");
     }
 
     private static bool IsHeaderLine(string line, DocumentType docType)
@@ -272,9 +628,7 @@ public class ParseDocumentUseCase : IParseDocumentUseCase
             @"R\$\s*([\d\.]+)\b(?!\s*,\d{2})",
             @"\b(\d{1,3}(?:\.\d{3})+(?:,\d{2}))\b",
             // Evita casar só "234,56" dentro de "1.234,56"
-            @"(?<![\d.])(\d+,\d{2})\b",
-            // Milhares sem centavos: não capturar "1.234" se a linha continua ",56"
-            @"\b(\d{1,3}(?:\.\d{3})+)\b(?!,\d{2})"
+            @"(?<![\d.])(\d+,\d{2})\b"
         };
 
         Money? last = null;
@@ -342,7 +696,8 @@ public class ParseDocumentUseCase : IParseDocumentUseCase
 
     private static string ExtractDescription(string line, Money? amount, DateTime? date)
     {
-        var cleanedLine = line;
+        var total = amount?.Amount ?? 0m;
+        var cleanedLine = FinancialLineItemSemanticNormalizer.Repair(line.Trim(), total).CleanDescription;
         cleanedLine = Regex.Replace(cleanedLine, @"R\$\s*[\d\.\s]+,\d{2}", " ", RegexOptions.IgnoreCase);
         cleanedLine = Regex.Replace(cleanedLine, @"R\$\s*[\d\.]+", " ", RegexOptions.IgnoreCase);
 
@@ -362,7 +717,7 @@ public class ParseDocumentUseCase : IParseDocumentUseCase
             cleanedLine = cleanedLine.Replace(date.Value.ToString("yyyy-MM-dd"), "", StringComparison.OrdinalIgnoreCase);
         }
 
-        cleanedLine = Regex.Replace(cleanedLine, @"[^a-zA-Z0-9À-ÿ\s\-]", " ");
+        cleanedLine = Regex.Replace(cleanedLine, @"[^a-zA-Z0-9À-ÿ\s\-/]", " ");
         cleanedLine = Regex.Replace(cleanedLine, @"\s+", " ").Trim();
         if (cleanedLine.Length > 500)
             cleanedLine = cleanedLine[..500];

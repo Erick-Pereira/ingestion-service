@@ -11,6 +11,7 @@ using Simcag.Shared.Messaging;
 using Simcag.Shared.Messaging.Configuration;
 using Simcag.Shared.Messaging.Extensions;
 using Simcag.Shared.Hosting;
+using Simcag.Shared.Telemetry;
 using RabbitMQ.Client;
 using System.Net;
 using System.Net.Sockets;
@@ -22,6 +23,7 @@ DotNetEnv.Env.NoClobber().Load();
 ContainerListenConfiguration.NormalizeAspNetCoreListenUrlsInContainer();
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddSimcagDistributedTelemetry("Simcag.IngestionService");
 ContainerListenConfiguration.ApplyDockerListenUrls(builder);
 
 builder.Services.Configure<IngestionEventPublishingOptions>(
@@ -126,6 +128,7 @@ var rabbitMqOptions = new RabbitMqOptions
     Password = rabbitMqPassword,
     VirtualHost = rabbitMqVirtualHost
 };
+rabbitMqOptions.ApplyMessageSigningFromEnvironment();
 
 if (string.IsNullOrEmpty(rabbitMqOptions.Host))
     throw new InvalidOperationException("RabbitMQ host não configurado. Defina RABBITMQ__HOST no .env.");
@@ -146,6 +149,8 @@ builder.Services.AddLogging(config => config.SetMinimumLevel(LogLevel.Informatio
 
 var app = builder.Build();
 
+app.UseSimcagHttpCorrelationActivityTags();
+
 // app.UseHttpsRedirection();
 
 app.UseSwagger();
@@ -159,6 +164,8 @@ app.MapHealthChecks("/health/live", new HealthCheckOptions
 {
     Predicate = registration => registration.Tags?.Contains("live") == true,
 });
+
+app.UseSimcagTelemetryEndpoints();
 
 app.Run();
 
@@ -199,7 +206,14 @@ static string GetListeningUrl()
 
     var requestedPort = ParsePort(requestedUrl) ?? defaultPort;
     var port = FindAvailablePort(requestedPort);
-    try { File.WriteAllText(Path.Combine(Path.GetTempPath(), "app_port"), port.ToString()); } catch { }
+    try
+    {
+        File.WriteAllText(Path.Combine(Path.GetTempPath(), "app_port"), port.ToString());
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine("[ingestion] Não foi possível gravar app_port em TEMP: " + ex.GetType().Name + ": " + ex.Message);
+    }
     return $"http://0.0.0.0:{port}";
 }
 
