@@ -58,13 +58,23 @@ public class IngestionController : ControllerBase
 
             var tenantId = ResolveTenantId(form.TenantId, Request.Headers);
 
+            if (!TryNormalizeUploadSource(form.Source, out var uploadSource, out var sourceError))
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = sourceError,
+                    errors = new[] { sourceError }
+                });
+            }
+
             // Process document through orchestrator
             var result = await _orchestrator.OrchestrateIngestionAsync(
                 fileStream,
                 file.FileName,
                 file.ContentType ?? "application/octet-stream",
                 file.Length,
-                form.Source,
+                uploadSource,
                 form.Origin,
                 tenantId,
                 form.Force,
@@ -136,6 +146,28 @@ public class IngestionController : ControllerBase
                 message = "Falha ao processar documento"
             });
         }
+    }
+
+    /// <summary>
+    /// Normaliza <c>source</c> do upload. Rejeita <c>NFS_SCRAPING</c> (fora de escopo).
+    /// Aceita alias TCC <c>MANUAL_UPLOAD</c> → <c>manual</c>.
+    /// </summary>
+    private static bool TryNormalizeUploadSource(string? raw, out string normalized, out string? error)
+    {
+        normalized = string.IsNullOrWhiteSpace(raw) ? "manual" : raw.Trim();
+        if (normalized.Equals("NFS_SCRAPING", StringComparison.OrdinalIgnoreCase))
+        {
+            error =
+                "Integração com portal NFS municipal não é suportada; envie o arquivo PDF/imagem da nota (NfsScrapingNotSupported).";
+            normalized = string.Empty;
+            return false;
+        }
+
+        if (normalized.Equals("MANUAL_UPLOAD", StringComparison.OrdinalIgnoreCase))
+            normalized = "manual";
+
+        error = null;
+        return true;
     }
 
     /// <summary>

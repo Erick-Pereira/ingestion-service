@@ -3,6 +3,7 @@ using Simcag.IngestionService.Domain.Enums;
 using Simcag.IngestionService.Domain.ValueObjects;
 using Simcag.IngestionService.Application.UseCases;
 using Microsoft.Extensions.Logging;
+using Simcag.Shared.ErrorHandling;
 
 namespace Simcag.IngestionService.Application.Services;
 
@@ -151,7 +152,7 @@ public class IngestionOrchestrator
             _logger.LogError(ex, "Erro na orquestração de ingestão para arquivo {FileName}", fileName);
             return IngestionOrchestratorResult.Failure(
                 "Erro interno na orquestração",
-                new[] { ex.Message });
+                new[] { ErrorSanitizer.Sanitize(ex.Message) });
         }
     }
 }

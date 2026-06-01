@@ -8,6 +8,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="FluentAssertions" Version="6.12.1" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0" />
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.5" />
@@ -20,6 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Simcag.IngestionService.Api\Simcag.IngestionService.Api.csproj" />
     <ProjectReference Include="..\Simcag.IngestionService.Application\Simcag.IngestionService.Application.csproj" />
     <ProjectReference Include="..\Simcag.IngestionService.Domain\Simcag.IngestionService.Domain.csproj" />
   </ItemGroup>

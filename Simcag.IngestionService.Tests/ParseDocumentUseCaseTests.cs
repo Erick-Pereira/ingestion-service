@@ -186,4 +186,76 @@ public class ParseDocumentUseCaseTests
         Assert.Contains(result.LineItems, li => li.Amount != null && li.Amount.Amount == 450.50m);
         Assert.Contains(result.LineItems, li => li.Amount != null && li.Amount.Amount == 1250.75m);
     }
+
+    /// <summary>NFS-e Fortaleza realista (nota_fiscal_condominio_realista.pdf) — prestador + 3 serviços com R$.</summary>
+    [Fact]
+    public void Execute_nfse_fortaleza_realista_extrai_tres_itens_e_descricoes_limpas()
+    {
+        var raw = """
+            PREFEITURA MUNICIPAL DE FORTALEZA
+            NOTA FISCAL DE SERVIÇOS ELETRÔNICA - NFS-e
+            PRESTADOR DE SERVIÇOS
+            Razão Social Condomínio Residencial Atlântico Sul
+            CNPJ 18.456.782/0001-22
+            TOMADOR DE SERVIÇOS
+            DISCRIMINAÇÃO DOS SERVIÇOS
+            Descrição Qtd Valor Unit. Valor Total
+            Taxa Condominial - Competência Maio/2026 1 R$ 820,00 R$ 820,00
+            Fundo de Reserva 1 R$ 120,00 R$ 120,00
+            Taxa de Segurança 1 R$ 75,00 R$ 75,00
+            Valor Total dos Serviços R$ 1.015,00
+            """;
+
+        var result = _sut.Execute(raw, DocumentType.NotaFiscal);
+
+        Assert.Equal(3, result.LineItems.Count);
+        Assert.Contains(result.LineItems, li => li.Description.Contains("Taxa Condominial", StringComparison.OrdinalIgnoreCase) && li.Amount!.Amount == 820m);
+        Assert.Contains(result.LineItems, li => li.Description == "Fundo de Reserva" && li.Amount!.Amount == 120m);
+        Assert.Contains(result.LineItems, li => li.Description.Contains("Taxa de Segurança", StringComparison.OrdinalIgnoreCase) && li.Amount!.Amount == 75m);
+        Assert.Equal(1015m, result.LineItems.Sum(li => li.Amount!.Amount));
+    }
+
+    [Fact]
+    public void Execute_nfse_fortaleza_colada_pelo_pdfpig_limpa_fundo_reserva()
+    {
+        var raw = """
+            PREFEITURA MUNICIPAL DE FORTALEZANOTA FISCAL DE SERVIÇOS ELETRÔNICA - NFS-eNúmero da Nota373850PRESTADOR DE SERVIÇOSRazão SocialCondomínio Residencial Atlântico SulCNPJ18.456.782/0001-22TOMADOR DE SERVIÇOSDISCRIMINAÇÃO DOS SERVIÇOSDescriçãoQtdValor Unit.Valor TotalTaxa Condominial - Competência Maio/20261R$ 820,00R$ 820,00Fundo de Reserva1R$ 120,00R$ 120,00Taxa de Segurança1R$ 75,00R$ 75,00Valor Total dos ServiçosR$ 1.015,00
+            """;
+
+        var result = _sut.Execute(raw, DocumentType.NotaFiscal);
+
+        Assert.Equal(3, result.LineItems.Count);
+        Assert.Contains(result.LineItems, li => li.Description.Contains("Taxa Condominial", StringComparison.OrdinalIgnoreCase) && li.Amount!.Amount == 820m);
+        Assert.Contains(result.LineItems, li => li.Description == "Fundo de Reserva" && li.Amount!.Amount == 120m);
+        Assert.Contains(result.LineItems, li => li.Description.Contains("Taxa de Segurança", StringComparison.OrdinalIgnoreCase) && li.Amount!.Amount == 75m);
+        Assert.DoesNotContain(result.LineItems, li => li.Description.Contains("R$", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Execute_danfe_nfe_colada_extrai_descricao_limpa_e_valor()
+    {
+        var goldenPath = Path.Combine(AppContext.BaseDirectory, "TestData", "consulta_danfe_pdfpig.txt");
+        string raw;
+        if (File.Exists(goldenPath))
+        {
+            raw = File.ReadAllText(goldenPath);
+        }
+        else
+        {
+            raw = """
+                RECEBEMOS DE ALFA MANUTENCAO PREDIAL LTDA OS PRODUTOS E/OU SERVIÇOS CONSTANTES DA NOTA FISCAL ELETRÔNICA INDICADAABAIXO. EMISSÃO: 31/05/2026 VALOR TOTAL: R$ 3.850,00 DESTINATÁRIO: CONDOMINIO DO BLOCO B DA SQS 107 - SQS 107 BLOCO B, S/N ASASUL BRASILIA-DFNF-eNº. 000.000.120Série 001DATA DE RECEBIMENTOIDENTIFICAÇÃO E ASSINATURA DO RECEBEDORIDENTIFICAÇÃO DO EMITENTEALFA MANUTENCAO PREDIAL LTDASIA TRECHO 03, 100ZONA INDUSTRIAL - 71200-000BRASILIA - DF Fone/Fax: 6133334444DANFEDocumento Auxiliar da NotaFiscal Eletrônica0 - ENTRADA1 - SAÍDA1Nº. 000.000.120Série 001Folha 1/1CHAVE DE ACESSO5326 0512 3456 7800 0190 5500 1000 0001 2010 0000 1201Consulta de autenticidade no portal nacional da NF-ewww.nfe.fazenda.gov.br/portal ou no site da Sefaz AutorizadoraNATUREZA DA OPERAÇÃOPrestação de Serviços de ManutençãoPROTOCOLO DE AUTORIZAÇÃO DE USOINSCRIÇÃO ESTADUAL07456321001INSCRIÇÃO ESTADUAL DO SUBST. TRIBUT.CNPJ / CPF12.345.678/0001-90SEM VALOR FISCALAMBIENTE DE HOMOLOGAÇÃODESTINATÁRIO / REMETENTENOME / RAZÃO SOCIALCONDOMINIO DO BLOCO B DA SQS 107CNPJ / CPF73.904.290/0001-06DATA DA EMISSÃO31/05/2026ENDEREÇOSQS 107 BLOCO B, S/NBAIRRO / DISTRITOASA SULCEP70346-020DATA DA SAÍDA/ENTRADAMUNICÍPIOBRASILIAUFDFFONE / FAXINSCRIÇÃO ESTADUALHORA DA SAÍDA/ENTRADACÁLCULO DO IMPOSTOBASE DE CÁLC. DO ICMS0,00VALOR DO ICMS0,00BASE DE CÁLC. ICMS S.T.0,00VALOR DO ICMS SUBST.0,00V. IMP. IMPORTAÇÃO0,00V. ICMS UF REMET.0, 00V. FCP UF DEST.0, 00VALOR DO PIS0,00V. TOTAL PRODUTOS3.850,00VALOR DO FRETE0,00VALOR DO SEGURO0,00DESCONTO0,00OUTRAS DESPESAS0,00VALOR TOTAL IPI0,00V. ICMS UF DEST.0, 00V. TOT. TRIB.0,00VALOR DA COFINS0,00V. TOTAL DA NOTA3.850,00TRANSPORTADOR / VOLUMES TRANSPORTADOSNOME / RAZÃO SOCIALFRETE9-Sem TransporteCÓDIGO ANTTPLACA DO VEÍCULOUFCNPJ / CPFENDEREÇOMUNICÍPIOUFINSCRIÇÃO ESTADUALQUANTIDADEESPÉCIEMARCANUMERAÇÃOPESO BRUTOPESO LÍQUIDODADOS DOS PRODUTOS / SERVIÇOSCÓDIGO PRODUTODESCRIÇÃO DO PRODUTO / SERVIÇONCM/SHO/CSOSNCFOPUNQUANTVALORUNITVALORTOTALB.CÁLCICMSVALORICMSVALORIPIALÍQ.ICMSALÍQ. IPI001MANUTENCAO PREVENTIVA E CORRETIVA DEELEVADORES491101001025933UN1,00003.850,00003.850,000, 000, 000, 00DADOS ADICIONAISINFORMAÇÕES COMPLEMENTARESInf. Contribuinte: Prestação de serviços de manutenção preventiva e corretiva de elevadores do condomínio referente ao mês demaio/2026.Valor Aproximado dos Tributos : R$ 0,00RESERVADO AO FISCOImpresso em 31/05/2026 as 20:33:27Consulta DANFE - https://consultadanfe.com
+                """;
+        }
+
+        var result = _sut.Execute(raw, DocumentType.NotaFiscal);
+
+        Assert.Equal(DocumentType.NotaFiscal, result.DocumentType);
+        Assert.Single(result.LineItems);
+        var item = result.LineItems[0];
+        Assert.Equal(3850m, item.Amount!.Amount);
+        Assert.Contains("manutenção", item.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("elevador", item.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(result.LineItems, li => li.Description.Contains("RECEBEMOS DE", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(result.LineItems, li => li.Description.Contains("DANFE", StringComparison.OrdinalIgnoreCase));
+    }
 }

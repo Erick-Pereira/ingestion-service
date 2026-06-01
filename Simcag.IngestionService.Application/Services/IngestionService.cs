@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
+using Simcag.Shared.ErrorHandling;
 using Simcag.Shared.Events;
 using Simcag.Shared.Messaging.Contracts;
 
@@ -58,7 +59,7 @@ namespace Simcag.IngestionService.Application.Services
                 {
                     Success = false,
                     Errors = new[] { "Erro interno ao processar evento" },
-                    Message = ex.Message
+                    Message = ErrorSanitizer.Sanitize(ex.Message)
                 };
             }
         }

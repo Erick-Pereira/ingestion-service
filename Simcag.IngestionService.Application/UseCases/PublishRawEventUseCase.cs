@@ -147,6 +147,8 @@ public class PublishRawEventUseCase : IPublishRawEventUseCase
         if (lineDtos.Count > 0)
             extra["ingestedLinesJson"] = JsonSerializer.Serialize(lineDtos);
 
+        var supplierHint = BrazilianDocumentSupplierExtractor.TryExtract(document.RawText);
+
         evt = new DataIngestedEvent
         {
             DocumentId = documentGuid,
@@ -160,6 +162,8 @@ public class PublishRawEventUseCase : IPublishRawEventUseCase
                 Amount = amount,
                 Date = date,
                 Description = headerDescription,
+                SupplierName = supplierHint.Name,
+                SupplierTaxId = supplierHint.TaxId,
                 Lines = lineDtos.Count > 0 ? lineDtos : null,
                 Extra = extra
             },

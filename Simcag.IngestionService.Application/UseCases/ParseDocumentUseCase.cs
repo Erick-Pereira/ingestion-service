@@ -34,6 +34,13 @@ public class ParseDocumentUseCase : IParseDocumentUseCase
         }
         else
         {
+            var danfeItems = TryExtractDanfeNfeProductLineItems(sanitized);
+            if (danfeItems.Count >= 1)
+            {
+                lineItems = danfeItems;
+            }
+            else
+            {
             var gluedInvoice = TryExtractGluedCondominioInvoiceLineItems(sanitized);
             if (gluedInvoice.Count >= 2)
             {
@@ -46,6 +53,7 @@ public class ParseDocumentUseCase : IParseDocumentUseCase
             }
             else
                 lineItems = ParseLineItems(sanitized, resolvedType);
+            }
         }
 
         _logger.LogDebug(
@@ -290,7 +298,11 @@ public class ParseDocumentUseCase : IParseDocumentUseCase
         sectionForRows = StripNfseDiscriminacaoColumnHeaders(sectionForRows);
 
         var fromRows = ExtractNfseDiscriminacaoValueRows(sectionForRows);
-        if (fromRows.Count > 0)
+        if (fromRows.Count >= 2)
+            return fromRows;
+
+        // Uma linha bem parseada (ex. discriminação truncada) ainda é preferível ao agregado.
+        if (fromRows.Count == 1)
             return fromRows;
 
         var total = TrySniffNfseServiceTotalBrl(text);
@@ -327,27 +339,55 @@ public class ParseDocumentUseCase : IParseDocumentUseCase
     private static List<ExtractedLineItem> ExtractNfseDiscriminacaoValueRows(string section)
     {
         var list = new List<ExtractedLineItem>();
-        // Itens colados: "…450,50Manutenção…" — partir após centavos antes da próxima palavra capitalizada.
+
+        // PdfPig pode preservar quebras — tentar linha a linha primeiro.
+        var logicalLines = section
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => l.Trim())
+            .Where(l => l.Length > 4)
+            .ToList();
+
+        if (logicalLines.Count <= 1)
+        {
+            logicalLines = Regex
+                .Split(section, @"(?<=\d{2},\d{2})(?=[A-ZÀ-ÿ][a-zà-ÿ])")
+                .Select(p => p.Trim())
+                .Where(p => p.Length > 4)
+                .ToList();
+        }
+
+        var lineNo = 1;
+        foreach (var piece in logicalLines)
+        {
+            if (!TryParseNfseDiscriminacaoRow(piece, out var desc, out var amt))
+                continue;
+            if (IsNfseJunkDescription(desc))
+                continue;
+
+            list.Add(new ExtractedLineItem(
+                lineNumber: lineNo++,
+                amount: new Money(amt, "BRL"),
+                date: null,
+                description: desc,
+                rawLine: piece.Length > 400 ? piece[..400] : piece,
+                confidenceScore: 85));
+        }
+
+        if (list.Count > 0)
+            return list;
+
+        // Fallback: blocos colados "…450,50Manutenção…"
         var pieces = Regex
             .Split(section, @"(?<=,\d{2})(?=[A-ZÀ-ÿ][a-zà-ÿ])")
             .Select(p => p.Trim())
             .Where(p => p.Length > 4)
             .ToList();
 
-        var lineRx = new Regex(
-            @"^(?<desc>.+?)(?<amt>(?:\d{1,3}(?:\.\d{3})+,\d{2})|(?:\d{1,6},\d{2}))$",
-            RegexOptions.CultureInvariant);
-        var lineNo = 1;
         foreach (var piece in pieces)
         {
-            var m = lineRx.Match(piece);
-            if (!m.Success)
+            if (!TryParseNfseDiscriminacaoRow(piece, out var desc, out var amt))
                 continue;
-            var desc = m.Groups["desc"].Value.Trim();
-            var amtRaw = m.Groups["amt"].Value;
             if (IsNfseJunkDescription(desc))
-                continue;
-            if (!TryParseBrazilianMoney(amtRaw, out var amt) || amt <= 0m || amt > 500_000m)
                 continue;
 
             list.Add(new ExtractedLineItem(
@@ -360,6 +400,54 @@ public class ParseDocumentUseCase : IParseDocumentUseCase
         }
 
         return list;
+    }
+
+    /// <summary>
+    /// Linha típica NFS-e: descrição + qtd + R$ unit + R$ total (espaços opcionais / colados pelo PdfPig).
+    /// </summary>
+    private static bool TryParseNfseDiscriminacaoRow(string piece, out string desc, out decimal amt)
+    {
+        desc = string.Empty;
+        amt = 0m;
+        if (string.IsNullOrWhiteSpace(piece))
+            return false;
+
+        piece = piece.Replace('\u00a0', ' ').Trim();
+        if (piece.Contains("Descrição", StringComparison.OrdinalIgnoreCase)
+            || piece.Contains("Descricao", StringComparison.OrdinalIgnoreCase)
+            || piece.Contains("Valor Unit", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var money = @"(?:\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2})";
+        var patterns = new[]
+        {
+            $@"^(?<desc>.+?)\s+(?<qty>\d{{1,6}})\s+R\$\s*(?<unit>{money})\s*R\$\s*(?<total>{money})\s*$",
+            $@"^(?<desc>.+?)(?<qty>\d{{1,6}})\s+R\$\s*(?<unit>{money})\s*R\$\s*(?<total>{money})\s*$",
+            $@"^(?<desc>.+?)(?<qty>\d{{1,6}})R\$\s*(?<unit>{money})R\$\s*(?<total>{money})\s*$",
+            $@"^(?<desc>.+?)(?<qty>\d{{1,6}})R\$\s*(?<unit>{money})\s*R\$\s*(?<total>{money})\s*$",
+            $@"^(?<desc>.+?)(?<amt>{money})\s*$",
+        };
+
+        foreach (var pattern in patterns)
+        {
+            var m = Regex.Match(piece, pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (!m.Success)
+                continue;
+
+            var amtRaw = m.Groups["total"].Success ? m.Groups["total"].Value : m.Groups["amt"].Value;
+            if (!TryParseBrazilianMoney(amtRaw, out amt) || amt <= 0m || amt > 500_000m)
+                continue;
+
+            var rawDesc = m.Groups["desc"].Value.Trim();
+            var repaired = FinancialLineItemSemanticNormalizer.Repair(rawDesc, amt);
+            desc = repaired.CleanDescription;
+            if (string.IsNullOrWhiteSpace(desc))
+                desc = rawDesc;
+
+            return !string.IsNullOrWhiteSpace(desc);
+        }
+
+        return false;
     }
 
     private static bool IsNfseJunkDescription(string desc)
@@ -394,6 +482,220 @@ public class ParseDocumentUseCase : IParseDocumentUseCase
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// DANFE (NF-e produto/serviço): PdfPig cola cabeçalho + tabela numa linha; extrai linhas da seção
+    /// "DADOS DOS PRODUTOS / SERVIÇOS" (código + descrição + … + UN + qtd + valores).
+    /// </summary>
+    private static bool LooksLikeDanfeNfe(string text)
+    {
+        var u = text.ToUpperInvariant();
+        if (!u.Contains("DANFE", StringComparison.Ordinal)
+            && !u.Contains("CHAVE DE ACESSO", StringComparison.Ordinal))
+            return false;
+
+        return u.Contains("DADOS DOS PRODUTOS", StringComparison.Ordinal)
+               || u.Contains("DADOS DO PRODUTO", StringComparison.Ordinal)
+               || u.Contains("DESCRIÇÃO DO PRODUTO", StringComparison.Ordinal)
+               || u.Contains("DESCRICAO DO PRODUTO", StringComparison.Ordinal);
+    }
+
+    private static List<ExtractedLineItem> TryExtractDanfeNfeProductLineItems(string text)
+    {
+        var list = new List<ExtractedLineItem>();
+        if (!LooksLikeDanfeNfe(text))
+            return list;
+
+        var section = TrySliceDanfeProductsSection(text);
+        if (string.IsNullOrWhiteSpace(section))
+            return list;
+
+        section = section.Replace('\u00a0', ' ').Trim();
+        var complementary = TryExtractDanfeComplementaryDescription(text);
+
+        var rowRx = new Regex(
+            @"\d{3}(?<desc>[A-ZÀ-ÿ][A-ZÀ-ÿ0-9\s/.,\-]+?)\d{6,}UN(?<qty>\d+,\d{2,4})(?<unit>\d{1,3}(?:\.\d{3})*,\d{2})(?<total>\d{1,3}(?:\.\d{3})*,\d{2})",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+        var lineNo = 1;
+        foreach (Match m in rowRx.Matches(section))
+        {
+            if (!m.Success)
+                continue;
+
+            if (!TryParseBrazilianMoney(m.Groups["total"].Value, out var total) || total <= 0m || total > 500_000m)
+                continue;
+
+            var desc = CleanDanfeProductDescription(m.Groups["desc"].Value);
+            if (string.IsNullOrWhiteSpace(desc) || IsDanfeJunkDescription(desc))
+                continue;
+
+            if (list.Count == 0 && !string.IsNullOrWhiteSpace(complementary))
+                desc = complementary;
+
+            var repaired = FinancialLineItemSemanticNormalizer.Repair(desc, total);
+            desc = string.IsNullOrWhiteSpace(repaired.CleanDescription) ? desc : repaired.CleanDescription;
+
+            list.Add(new ExtractedLineItem(
+                lineNumber: lineNo++,
+                amount: new Money(total, "BRL"),
+                date: null,
+                description: desc,
+                rawLine: m.Value.Length > 400 ? m.Value[..400] : m.Value,
+                confidenceScore: 88));
+        }
+
+        if (list.Count >= 1)
+            return list;
+
+        // Fallback: total da nota + natureza da operação ou inf. complementar.
+        var noteTotal = TrySniffDanfeNoteTotalBrl(text);
+        if (noteTotal is null or <= 0m)
+            return list;
+
+        var fallbackDesc = complementary
+                           ?? TryExtractDanfeNaturezaOperacao(text)
+                           ?? "Nota fiscal eletrônica (NF-e)";
+        fallbackDesc = CleanDanfeProductDescription(fallbackDesc);
+        if (fallbackDesc.Length > 220)
+            fallbackDesc = fallbackDesc[..220];
+
+        list.Add(new ExtractedLineItem(
+            lineNumber: 1,
+            amount: new Money(noteTotal.Value, "BRL"),
+            date: null,
+            description: fallbackDesc,
+            rawLine: fallbackDesc,
+            confidenceScore: 72));
+
+        return list;
+    }
+
+    private static string? TrySliceDanfeProductsSection(string raw)
+    {
+        var start = -1;
+        foreach (var marker in new[]
+                 {
+                     "DADOS DOS PRODUTOS / SERVIÇOS",
+                     "DADOS DOS PRODUTOS / SERVICOS",
+                     "DADOS DOS PRODUTOS",
+                     "DADOS DO PRODUTO",
+                 })
+        {
+            var i = raw.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (i < 0)
+                continue;
+            var endPos = i + marker.Length;
+            if (endPos > start)
+                start = endPos;
+        }
+
+        if (start < 0)
+            return null;
+
+        var end = raw.Length;
+        foreach (var endMarker in new[]
+                 {
+                     "DADOS ADICIONAIS",
+                     "INFORMAÇÕES COMPLEMENTARES",
+                     "INFORMACOES COMPLEMENTARES",
+                     "RESERVADO AO FISCO",
+                     "TRANSPORTADOR / VOLUMES",
+                 })
+        {
+            var j = raw.IndexOf(endMarker, start, StringComparison.OrdinalIgnoreCase);
+            if (j >= 0)
+                end = Math.Min(end, j);
+        }
+
+        if (end <= start)
+            return null;
+
+        var section = raw[start..end].Trim();
+        // Remove cabeçalhos de coluna colados pelo PdfPig.
+        section = Regex.Replace(
+            section,
+            @"^\s*.*?(?:DESCRI[ÇC][AÃ]O\s+DO\s+PRODUTO|VALORTOTAL|VALOR\s*TOTAL|C[ÓO]DIGO\s+PRODUTO).*?(?=\d{3}[A-ZÀ-ÿ])",
+            "",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        return section.Trim();
+    }
+
+    private static string? TryExtractDanfeComplementaryDescription(string text)
+    {
+        var m = Regex.Match(
+            text,
+            @"Inf\.?\s*Contribuinte:\s*(?<info>.+?)(?:Valor\s+Aproximado|RESERVADO\s+AO\s+FISCO|Impresso\s+em|$)",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        if (!m.Success)
+            return null;
+
+        var info = Regex.Replace(m.Groups["info"].Value, @"\s+", " ").Trim().TrimEnd('.');
+        return info.Length >= 8 ? info : null;
+    }
+
+    private static string? TryExtractDanfeNaturezaOperacao(string text)
+    {
+        var m = Regex.Match(
+            text,
+            @"NATUREZA\s+DA\s+OPERA[ÇC][AÃ]O\s*(?<op>.+?)(?:PROTOCOLO|INSCRI[ÇC][AÃ]O\s+ESTADUAL|$)",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        if (!m.Success)
+            return null;
+
+        var op = Regex.Replace(m.Groups["op"].Value, @"\s+", " ").Trim();
+        return op.Length >= 6 ? op : null;
+    }
+
+    private static decimal? TrySniffDanfeNoteTotalBrl(string text)
+    {
+        var patterns = new[]
+        {
+            @"V\.\s*TOTAL\s+DA\s+NOTA\s*(\d{1,3}(?:\.\d{3})*,\d{2})",
+            @"VALOR\s+TOTAL\s+DA\s+NOTA\s*(\d{1,3}(?:\.\d{3})*,\d{2})",
+            @"VALOR\s+TOTAL:\s*R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})",
+            @"V\.\s+TOTAL\s+PRODUTOS\s*(\d{1,3}(?:\.\d{3})*,\d{2})",
+        };
+
+        foreach (var p in patterns)
+        {
+            var m = Regex.Match(text, p, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (m.Success && TryParseBrazilianMoney(m.Groups[1].Value, out var d) && d > 0m)
+                return d;
+        }
+
+        return null;
+    }
+
+    private static string CleanDanfeProductDescription(string desc)
+    {
+        desc = Regex.Replace(desc.Replace('\u00a0', ' '), @"\s+", " ").Trim();
+        desc = Regex.Replace(desc, @"DEELEVADORES", "DE ELEVADORES", RegexOptions.IgnoreCase);
+        desc = Regex.Replace(desc, @"DEMAIO", "DE MAIO", RegexOptions.IgnoreCase);
+        desc = Regex.Replace(desc, @"\s*/\s*", " / ");
+        return desc;
+    }
+
+    private static bool IsDanfeJunkDescription(string desc)
+    {
+        if (desc.Length > 240)
+            return true;
+        var u = desc.ToUpperInvariant();
+        return u.Contains("RECEBEMOS DE", StringComparison.Ordinal)
+               || u.Contains("DANFE", StringComparison.Ordinal)
+               || u.Contains("CHAVE DE ACESSO", StringComparison.Ordinal)
+               || u.Contains("IDENTIFICAÇÃO DO EMITENTE", StringComparison.Ordinal)
+               || u.Contains("IDENTIFICACAO DO EMITENTE", StringComparison.Ordinal);
+    }
+
+    private static bool IsDanfeHeaderBlob(string line)
+    {
+        if (line.Length < 160)
+            return false;
+        var u = line.ToUpperInvariant();
+        return u.Contains("RECEBEMOS DE", StringComparison.Ordinal)
+               && (u.Contains("DANFE", StringComparison.Ordinal) || u.Contains("NF-E", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -543,6 +845,9 @@ public class ParseDocumentUseCase : IParseDocumentUseCase
             var trimmedLine = line.Trim();
 
             if (string.IsNullOrWhiteSpace(trimmedLine) || IsHeaderLine(trimmedLine, docType))
+                continue;
+
+            if (IsDanfeHeaderBlob(trimmedLine))
                 continue;
 
             var amount = ExtractAmount(trimmedLine);

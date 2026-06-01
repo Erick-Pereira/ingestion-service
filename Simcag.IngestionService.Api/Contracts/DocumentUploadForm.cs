@@ -11,6 +11,7 @@ public sealed class DocumentUploadForm
     [Required]
     public IFormFile File { get; set; } = null!;
 
+    /// <summary>Valores canónicos: <c>manual</c>, <c>frontend</c>. Alias TCC: <c>MANUAL_UPLOAD</c> → <c>manual</c>. <c>NFS_SCRAPING</c> não é suportado.</summary>
     public string Source { get; set; } = "manual";
 
     public string Origin { get; set; } = string.Empty;

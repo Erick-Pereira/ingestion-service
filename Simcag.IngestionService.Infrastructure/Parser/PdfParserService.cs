@@ -9,13 +9,15 @@ namespace Simcag.IngestionService.Infrastructure.Parser;
 public class PdfParserService : IPdfParserService
 {
     private readonly ILogger<PdfParserService> _logger;
+    private readonly IOcrService _ocrService;
 
-    public PdfParserService(ILogger<PdfParserService> logger)
+    public PdfParserService(ILogger<PdfParserService> logger, IOcrService ocrService)
     {
         _logger = logger;
+        _ocrService = ocrService;
     }
 
-    public Task<string> ExtractTextAsync(RawDocument document, CancellationToken cancellationToken = default)
+    public async Task<string> ExtractTextAsync(RawDocument document, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -25,7 +27,7 @@ public class PdfParserService : IPdfParserService
         if (content.IsEmpty)
         {
             _logger.LogWarning("Sem bytes do PDF para {DocumentId}; retornando texto vazio.", document.Id);
-            return Task.FromResult(string.Empty);
+            return string.Empty;
         }
 
         try
@@ -45,15 +47,40 @@ public class PdfParserService : IPdfParserService
                 document.Id,
                 text.Length);
 
-            return Task.FromResult(text);
+            return text;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(
                 ex,
-                "Falha ao extrair texto via PdfPig para documento {DocumentId}; pipeline pode usar OCR.",
+                "Falha ao extrair texto via PdfPig para documento {DocumentId}; tentando OCR como fallback.",
                 document.Id);
-            return Task.FromResult(string.Empty);
+
+            // Tentar OCR como fallback quando o parser falha
+            try
+            {
+                var ocrResult = await (_ocrService?.PerformOcrAsync(document, cancellationToken) 
+                                        ?? Task.FromResult<string>(string.Empty));
+                if (!string.IsNullOrWhiteSpace(ocrResult))
+                {
+                    _logger.LogInformation("OCR fallback bem-sucedido para documento {DocumentId}", document.Id);
+                    return ocrResult;
+                }
+
+                _logger.LogWarning("OCR retornou texto vazio para {DocumentId}; usando fallback heurístico.", document.Id);
+            }
+            catch (Exception ocrEx)
+            {
+                _logger.LogError(ocrEx, "OCR fallback também falhou para {DocumentId}, tentando fallback heurístico.", document.Id);
+            }
+
+            // Fallback heurístico como última opção
+            var heuristicText = BuildHeuristicFallback(document);
+            return heuristicText;
         }
     }
+
+    private static string BuildHeuristicFallback(RawDocument document) =>
+        $"[HEURISTIC FALLBACK - Document: {document.FileName ?? document.Id}]\n" +
+        "WARNING: Could not extract text from PDF. Document may need manual review.";
 }

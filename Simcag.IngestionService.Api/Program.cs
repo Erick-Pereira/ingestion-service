@@ -10,7 +10,9 @@ using Simcag.Shared.Events;
 using Simcag.Shared.Messaging;
 using Simcag.Shared.Messaging.Configuration;
 using Simcag.Shared.Messaging.Extensions;
+using Simcag.Shared.ErrorHandling;
 using Simcag.Shared.Hosting;
+using Simcag.Shared.Security;
 using Simcag.Shared.Telemetry;
 using RabbitMQ.Client;
 using System.Net;
@@ -25,15 +27,14 @@ ContainerListenConfiguration.NormalizeAspNetCoreListenUrlsInContainer();
 var builder = WebApplication.CreateBuilder(args);
 builder.AddSimcagDistributedTelemetry("Simcag.IngestionService");
 ContainerListenConfiguration.ApplyDockerListenUrls(builder);
+var isTesting = builder.Environment.IsEnvironment("Testing");
 
 builder.Services.Configure<IngestionEventPublishingOptions>(
     builder.Configuration.GetSection(IngestionEventPublishingOptions.SectionKey));
 
 var urls = GetListeningUrl();
 builder.WebHost.UseUrls(urls);
-Console.WriteLine($"🚀 Ingestion Service listening on: {urls}");
-Console.WriteLine($"📡 Access via: http://localhost:{ParsePort(urls)} or http://container-host:{ParsePort(urls)}");
-
+Console.WriteLine($"Ingestion Service listening on: {urls}");
 
 builder.Services.AddControllers();
 
@@ -56,7 +57,7 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 builder.Services.AddHealthChecks()
-    .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live"]);
+    .AddSimcagLiveSelfCheck();
 
 // Register Infrastructure services
 builder.Services.AddSingleton<IOcrService, TesseractOcrService>();
@@ -130,6 +131,8 @@ var rabbitMqOptions = new RabbitMqOptions
 };
 rabbitMqOptions.ApplyMessageSigningFromEnvironment();
 
+if (!isTesting)
+{
 if (string.IsNullOrEmpty(rabbitMqOptions.Host))
     throw new InvalidOperationException("RabbitMQ host não configurado. Defina RABBITMQ__HOST no .env.");
 if (string.IsNullOrEmpty(rabbitMqOptions.UserName))
@@ -144,11 +147,19 @@ builder.Services.AddRabbitMqEventPublisher<Simcag.Shared.Events.RawFinancialData
 builder.Services.AddRabbitMqEventPublisher<Simcag.Shared.Events.DataIngestedEvent>(eventsExchange);
 
 builder.Services.AddRabbitMqEventPublisher<Simcag.Shared.Events.PriceCollectedEvent>(eventsExchange);
+}
 
 builder.Services.AddLogging(config => config.SetMinimumLevel(LogLevel.Information));
 
+builder.Services.AddSimcagGatewayAuthentication(builder.Environment);
+
+builder.Services.AddSimcagProblemDetails();
+
 var app = builder.Build();
 
+app.ValidateSimcagGatewayTrustAtStartup();
+
+app.UseSimcagExceptionHandler();
 app.UseSimcagHttpCorrelationActivityTags();
 
 // app.UseHttpsRedirection();
@@ -156,14 +167,11 @@ app.UseSimcagHttpCorrelationActivityTags();
 app.UseSwagger();
 app.UseSwaggerUI();
 
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
-app.MapHealthChecks("/health");
-app.MapHealthChecks("/health/live", new HealthCheckOptions
-{
-    Predicate = registration => registration.Tags?.Contains("live") == true,
-});
+app.MapSimcagHealthChecks();
 
 app.UseSimcagTelemetryEndpoints();
 
@@ -210,9 +218,9 @@ static string GetListeningUrl()
     {
         File.WriteAllText(Path.Combine(Path.GetTempPath(), "app_port"), port.ToString());
     }
-    catch (Exception ex)
+    catch (Exception)
     {
-        Console.Error.WriteLine("[ingestion] Não foi possível gravar app_port em TEMP: " + ex.GetType().Name + ": " + ex.Message);
+        // Best-effort port file for local dev tooling.
     }
     return $"http://0.0.0.0:{port}";
 }
@@ -248,4 +256,8 @@ static bool IsPortAvailable(int port)
     {
         return false;
     }
+}
+
+public partial class Program
+{
 }

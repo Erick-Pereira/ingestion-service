@@ -39,7 +39,7 @@ public sealed class DataIngestedEventJsonRoundTripTests
             UploadedAt = DateTime.UtcNow
         };
 
-        var envelope = new MessageEnvelope<DataIngestedEvent> { Data = evt };
+        var envelope = MessageEnvelope<DataIngestedEvent>.Create(evt);
         var json = JsonSerializer.Serialize(envelope, RabbitMqLikeJson);
         var back = JsonSerializer.Deserialize<MessageEnvelope<DataIngestedEvent>>(json, RabbitMqLikeJson);
 
