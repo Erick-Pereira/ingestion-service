@@ -45,6 +45,7 @@ public class PublishRawEventUseCase : IPublishRawEventUseCase
         {
             DocumentId = document.Id,
             TenantId = document.TenantId,
+            UploadedBy = document.UploadedBy ?? Guid.Empty,
             Origin = document.Origin,
             RawText = document.RawText,
             DocumentType = document.DocumentType.ToString(),
@@ -129,7 +130,9 @@ public class PublishRawEventUseCase : IPublishRawEventUseCase
                 Description = string.IsNullOrWhiteSpace(li.Description)
                     ? $"Linha {li.LineNumber}"
                     : li.Description.Trim(),
-                Amount = li.Amount!.Amount
+                Amount = li.Amount!.Amount,
+                Quantity = li.Quantity,
+                UnitPrice = li.UnitPrice
             })
             .ToList();
 
@@ -167,7 +170,7 @@ public class PublishRawEventUseCase : IPublishRawEventUseCase
                 Lines = lineDtos.Count > 0 ? lineDtos : null,
                 Extra = extra
             },
-            UploadedBy = Guid.Empty,
+            UploadedBy = document.UploadedBy ?? Guid.Empty,
             UploadedAt = document.UploadedAt
         };
 

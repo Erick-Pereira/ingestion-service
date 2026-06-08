@@ -44,6 +44,7 @@ public class IngestionOrchestrator
         string source,
         string origin,
         string? tenantId,
+        Guid? uploadedBy,
         bool forceNewDocument,
         CancellationToken cancellationToken = default)
     {
@@ -80,6 +81,8 @@ public class IngestionOrchestrator
                 origin,
                 tenantId,
                 cancellationToken);
+
+            document.SetUploadedBy(uploadedBy);
 
             if (!document.HasIngestIntegrity())
             {

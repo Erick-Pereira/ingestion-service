@@ -14,6 +14,7 @@ public class RawDocument
     public string Source { get; private set; } = string.Empty;
     public string Origin { get; private set; } = string.Empty;
     public string TenantId { get; private set; } = string.Empty;
+    public Guid? UploadedBy { get; private set; }
     public DateTime UploadedAt { get; private set; }
     public DocumentType DocumentType { get; private set; } = DocumentType.Desconhecido;
     public string RawText { get; private set; } = string.Empty;
@@ -78,6 +79,9 @@ public class RawDocument
 
     public void SetTenantId(string? tenantId) =>
         TenantId = string.IsNullOrWhiteSpace(tenantId) ? string.Empty : tenantId.Trim();
+
+    public void SetUploadedBy(Guid? userId) =>
+        UploadedBy = userId is { } u && u != Guid.Empty ? u : null;
 
     public void SetRawText(string rawText) =>
         RawText = rawText ?? string.Empty;

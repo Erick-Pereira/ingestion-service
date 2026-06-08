@@ -253,9 +253,85 @@ public class ParseDocumentUseCaseTests
         Assert.Single(result.LineItems);
         var item = result.LineItems[0];
         Assert.Equal(3850m, item.Amount!.Amount);
-        Assert.Contains("manutenção", item.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("MANUTENCAO", item.Description, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("elevador", item.Description, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(result.LineItems, li => li.Description.Contains("RECEBEMOS DE", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(result.LineItems, li => li.Description.Contains("DANFE", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Execute_danfe_nfe_multiplos_itens_usa_descricao_produto_nao_obs()
+    {
+        var raw = """
+            DANFE NF-e
+            IDENTIFICAÇÃO DO EMITENTE
+            EMPRESA XYZ SERVICOS LTDA
+            DADOS DOS PRODUTOS / SERVIÇOS
+            CÓDIGO PRODUTO DESCRIÇÃO DO PRODUTO / SERVIÇO NCM/SH O/CST CFOP UN QUANT VALOR UNIT VALOR TOTAL
+            001 Material de manutencao predial 73269090 000 5102 UN 1,0000 3.500,0000 3.500,00
+            DADOS ADICIONAIS
+            INFORMAÇÕES COMPLEMENTARES
+            Inf. Contribuinte: Documento emitido para condominio.
+            """;
+
+        var result = _sut.Execute(raw, DocumentType.NotaFiscal);
+
+        Assert.Single(result.LineItems);
+        var item = result.LineItems[0];
+        Assert.Contains("Material de manutencao predial", item.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(item.Description, "Documento emitido para condominio", StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(3500m, item.Amount!.Amount);
+        Assert.Equal(1m, item.Quantity);
+    }
+
+    [Fact]
+    public void Execute_danfe_nfe_seguranca_extrai_dois_produtos_com_quantidades()
+    {
+        var raw = """
+            DANFE NF-e
+            DADOS DOS PRODUTOS / SERVIÇOS
+            CAM01 Camera IP Full HD 2MP 85258919 000 5102 UN 12,0000 890,0000 10.680,00
+            NVR01 NVR 16 canais IP 85219090 000 5102 UN 1,0000 4.200,0000 4.200,00
+            """;
+
+        var result = _sut.Execute(raw, DocumentType.NotaFiscal);
+
+        Assert.Equal(2, result.LineItems.Count);
+        Assert.Contains(result.LineItems, li =>
+            li.Description.Contains("Camera IP", StringComparison.OrdinalIgnoreCase)
+            && li.Amount!.Amount == 10680m
+            && li.Quantity == 12m);
+        Assert.Contains(result.LineItems, li =>
+            li.Description.Contains("NVR 16 canais", StringComparison.OrdinalIgnoreCase)
+            && li.Amount!.Amount == 4200m
+            && li.Quantity == 1m);
+    }
+
+    /// <summary>PdfPig cola linhas de produto num bloco único (NF segurança 11c45f21…).</summary>
+    [Fact]
+    public void Execute_danfe_nfe_seguranca_colada_pelo_pdfpig_extrai_dois_itens()
+    {
+        var raw = """
+            DANFE NF-e
+            DADOS DOS PRODUTOS / SERVIÇOS
+            CÓDIGO PRODUTODESCRIÇÃO DO PRODUTO / SERVIÇONCM/SHO/CSTCFOPUNQUANTVALORUNITVALORTOTAL
+            CAM01Camera IP Full HD 2MP852589190005102UN12,0000890,000010.680,0010.680,001.922,4018,00NVR01NVR 16 canais IP852190900005102UN1,00004.200,00004.200,00756,0018,00
+            DADOS ADICIONAIS
+            """;
+
+        var result = _sut.Execute(raw, DocumentType.NotaFiscal);
+
+        Assert.Equal(2, result.LineItems.Count);
+        Assert.Contains(result.LineItems, li =>
+            li.Description.Contains("Camera IP", StringComparison.OrdinalIgnoreCase)
+            && li.Amount!.Amount == 10680m
+            && li.Quantity == 12m
+            && li.UnitPrice == 890m);
+        Assert.Contains(result.LineItems, li =>
+            li.Description.Contains("NVR 16 canais", StringComparison.OrdinalIgnoreCase)
+            && li.Amount!.Amount == 4200m
+            && li.Quantity == 1m
+            && li.UnitPrice == 4200m);
+        Assert.DoesNotContain(result.LineItems, li => li.Description.Contains("UN12,0000", StringComparison.Ordinal));
     }
 }

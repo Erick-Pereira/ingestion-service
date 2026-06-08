@@ -10,6 +10,10 @@ public class ExtractedLineItem
     public string Description { get; private set; } = string.Empty;
     public string RawLine { get; private set; } = string.Empty;
     public int ConfidenceScore { get; private set; }
+    /// <summary>Quantidade na NF-e (ex.: 12,0000 → 12).</summary>
+    public decimal? Quantity { get; private set; }
+    /// <summary>Valor unitário BRL quando extraído da DANFE.</summary>
+    public decimal? UnitPrice { get; private set; }
 
     protected ExtractedLineItem() { }
 
@@ -19,7 +23,9 @@ public class ExtractedLineItem
         DateTime? date,
         string description,
         string rawLine,
-        int confidenceScore = 0)
+        int confidenceScore = 0,
+        decimal? quantity = null,
+        decimal? unitPrice = null)
     {
         if (lineNumber < 0)
             throw new ArgumentException("Número da linha deve ser não negativo", nameof(lineNumber));
@@ -33,6 +39,8 @@ public class ExtractedLineItem
         Description = description ?? string.Empty;
         RawLine = rawLine ?? string.Empty;
         ConfidenceScore = confidenceScore;
+        Quantity = quantity is > 0m ? quantity : null;
+        UnitPrice = unitPrice is >= 0m ? unitPrice : null;
     }
 
     public void SetAmount(Money? amount)

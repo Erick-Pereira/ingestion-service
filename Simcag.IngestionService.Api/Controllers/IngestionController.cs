@@ -57,6 +57,7 @@ public class IngestionController : ControllerBase
             using var fileStream = file.OpenReadStream();
 
             var tenantId = ResolveTenantId(form.TenantId, Request.Headers);
+            var uploadedBy = ResolveUploadedBy(Request.Headers);
 
             if (!TryNormalizeUploadSource(form.Source, out var uploadSource, out var sourceError))
             {
@@ -77,6 +78,7 @@ public class IngestionController : ControllerBase
                 uploadSource,
                 form.Origin,
                 tenantId,
+                uploadedBy,
                 form.Force,
                 cancellationToken);
 
@@ -189,6 +191,19 @@ public class IngestionController : ControllerBase
             return null;
 
         return Guid.TryParse(header, out var hg) && hg != Guid.Empty ? hg.ToString() : null;
+    }
+
+    /// <summary>Utilizador autenticado (gateway injeta <see cref="GatewayForwardedAuthHeaders.UserId"/> a partir do JWT).</summary>
+    private static Guid? ResolveUploadedBy(IHeaderDictionary headers)
+    {
+        if (!headers.TryGetValue(GatewayForwardedAuthHeaders.UserId, out var headerVals))
+            return null;
+
+        var header = headerVals.FirstOrDefault()?.Trim();
+        if (string.IsNullOrEmpty(header))
+            return null;
+
+        return Guid.TryParse(header, out var userId) && userId != Guid.Empty ? userId : null;
     }
 
     /// <summary>
