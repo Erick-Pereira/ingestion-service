@@ -7,13 +7,13 @@ namespace Simcag.IngestionService.Application.Services
 {
     public class IngestionServiceImpl : IIngestionService
     {
-        private readonly IEventPublisher<PriceCollectedEvent> _publisher;
+        private readonly IEventPublisher<DataIngestedEvent> _publisher;
         private readonly IProductValidationService _validationService;
         private readonly ILogger<IngestionServiceImpl> _logger;
 
         public IngestionServiceImpl(
             IProductValidationService validationService,
-            IEventPublisher<PriceCollectedEvent> publisher,
+            IEventPublisher<DataIngestedEvent> publisher,
             ILogger<IngestionServiceImpl> logger)
         {
             _publisher = publisher;
@@ -21,13 +21,13 @@ namespace Simcag.IngestionService.Application.Services
             _logger = logger;
         }
 
-        public async Task<IngestionResult> ProcessPriceCollectedEventAsync(PriceCollectedEvent @event, CancellationToken cancellationToken = default)
+        public async Task<IngestionResult> ProcessPriceCollectedEventAsync(DataIngestedEvent @event, CancellationToken cancellationToken = default)
         {
             try
             {
-                _logger.LogInformation("Iniciando processamento do evento de preço para produto {ProductId} (EventId={EventId}) em {Timestamp}", @event.ProductId, @event.EventId, DateTime.UtcNow);
+                _logger.LogInformation("Iniciando processamento do evento de preço para produto {ProductId} (EventId={EventId}) em {Timestamp}", @event.DocumentId, @event.EventId, DateTime.UtcNow);
 
-                var validationResult = _validationService.ValidatePriceCollectedEvent(@event);
+                var validationResult = _validationService.ValidateDataIngestedEvent(@event);
 
                 if (!validationResult.IsValid)
                 {
@@ -54,7 +54,7 @@ namespace Simcag.IngestionService.Application.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Erro ao processar evento de preço (EventId={EventId}, ProductId={ProductId})", @event.EventId, @event.ProductId);
+                _logger.LogError(ex, "Erro ao processar evento de preço (EventId={EventId}, ProductId={ProductId})", @event.EventId, @event.DocumentId);
                 return new IngestionResult
                 {
                     Success = false,
@@ -67,23 +67,25 @@ namespace Simcag.IngestionService.Application.Services
         /// <summary>
         /// Deserialização JSON comum: EventId fica vazio; gera um GUID antes de publicar.
         /// </summary>
-        private static PriceCollectedEvent EnsureEventId(PriceCollectedEvent @event)
+        private static DataIngestedEvent EnsureEventId(DataIngestedEvent @event)
         {
             if (@event.EventId != Guid.Empty)
                 return @event;
 
-            return new PriceCollectedEvent
+            return new DataIngestedEvent
             {
                 EventId = Guid.NewGuid(),
                 CreatedAt = @event.CreatedAt,
-                ProductId = @event.ProductId,
-                ProductName = @event.ProductName,
-                Price = @event.Price,
+                DocumentId = @event.DocumentId,
+                TenantId = @event.TenantId,
+                FileHash = @event.FileHash,
                 Source = @event.Source,
-                Market = @event.Market,
-                OccurredAt = @event.OccurredAt,
-                Timestamp = @event.Timestamp,
-                Data = @event.Data
+                DocumentType = @event.DocumentType,
+                RawText = @event.RawText,
+                ExtractedFields = @event.ExtractedFields,
+                UploadedBy = @event.UploadedBy,
+                UploadedAt = @event.UploadedAt,
+                Version = @event.Version
             };
         }
     }

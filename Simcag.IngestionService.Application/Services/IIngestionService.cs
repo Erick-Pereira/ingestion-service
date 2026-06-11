@@ -5,7 +5,7 @@ namespace Simcag.IngestionService.Application.Services
 {
     public interface IIngestionService
     {
-        Task<IngestionResult> ProcessPriceCollectedEventAsync(PriceCollectedEvent @event, CancellationToken cancellationToken);
+        Task<IngestionResult> ProcessPriceCollectedEventAsync(DataIngestedEvent @event, CancellationToken cancellationToken);
     }
 
     public class IngestionResult

@@ -1,5 +1,4 @@
 using System.Text.RegularExpressions;
-using Microsoft.Extensions.Logging.Abstractions;
 using Simcag.IngestionService.Application.UseCases;
 using Simcag.IngestionService.Domain.Enums;
 
@@ -7,7 +6,7 @@ namespace Simcag.IngestionService.Tests;
 
 public class ParseDocumentUseCaseTests
 {
-    private readonly ParseDocumentUseCase _sut = new(NullLogger<ParseDocumentUseCase>.Instance);
+    private readonly ParseDocumentUseCase _sut = ParseDocumentTestFactory.CreateUseCase();
 
     [Fact]
     public void Execute_detecta_nota_fiscal_e_extrai_linha_com_valor()
@@ -333,5 +332,55 @@ public class ParseDocumentUseCaseTests
             && li.Quantity == 1m
             && li.UnitPrice == 4200m);
         Assert.DoesNotContain(result.LineItems, li => li.Description.Contains("UN12,0000", StringComparison.Ordinal));
+    }
+
+    /// <summary>NF-e Pichau (código 45074, CFOP 1202, qty inteira) — não usar natureza da operação como item.</summary>
+    [Fact]
+    public void Execute_danfe_nfe_pichau_codigo_5_digitos_extrai_gabinete()
+    {
+        var raw = """
+            DANFE
+            DOCUMENTO AUXILIAR DA NOTA FISCAL ELETRÔNICA
+            BAZAM E PICHAU INFORMATICA LTDA
+            NATUREZA DA OPERAÇÃO
+            Dev Venda Merc Terc. do Estado
+            VALOR TOTAL DA NOTA
+            609,99
+            DADOS DO PRODUTO/SERVIÇO
+            COD. PROD. DESCRIÇÃO DO PRODUTO/SERVIÇO NCM SH O/CST CFOP UNID. QUANT. VALOR UNITARIO VALOR TOTAL
+            45074 Gabinete Gamer Pichau Voyager One, Full-Tower, Lateral de Vidro, Com 1 frontal, Preto, PG-VY1-BK
+            PG-VY1-BK
+            84733019 0 00 1202 UN 1 572,76 572,76 609,99 0,00 0,00 73,20 37,23 12,00 6,50 0,00
+            RECEBEMOS DE BAZAM E PICHAU INFORMATICA LTDA OS PRODUTOS/SERVIÇOS CONSTANTES NA NOTA FISCAL
+            DADOS ADICIONAIS
+            """;
+
+        var result = _sut.Execute(raw, DocumentType.NotaFiscal);
+
+        Assert.Single(result.LineItems);
+        var item = result.LineItems[0];
+        Assert.Contains("Gabinete Gamer Pichau", item.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(item.Description, "Dev Venda", StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(572.76m, item.Amount!.Amount);
+        Assert.Equal(1m, item.Quantity);
+        Assert.Equal(572.76m, item.UnitPrice);
+    }
+
+    /// <summary>Texto real do PdfPig em <c>NFE_9041002_09376495000122.pdf</c> (Pichau).</summary>
+    [Fact]
+    public void Execute_danfe_nfe_pichau_pdfpig_golden_extrai_gabinete_e_nao_natureza()
+    {
+        var goldenPath = Path.Combine(AppContext.BaseDirectory, "TestData", "pichau_nfe_pdfpig.txt");
+        Assert.True(File.Exists(goldenPath), $"Golden em: {goldenPath}");
+
+        var raw = File.ReadAllText(goldenPath);
+        var result = _sut.Execute(raw, DocumentType.NotaFiscal);
+
+        Assert.Single(result.LineItems);
+        var item = result.LineItems[0];
+        Assert.Contains("Gabinete Gamer Pichau", item.Description, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(item.Description, "Dev Venda", StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(572.76m, item.Amount!.Amount);
+        Assert.Equal(1m, item.Quantity);
     }
 }

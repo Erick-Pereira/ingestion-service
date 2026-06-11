@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Simcag.IngestionService.Application.Configuration;
+using Simcag.IngestionService.Application.DocumentExtraction;
+using Simcag.IngestionService.Application.DocumentExtraction.Profiles;
 using Simcag.IngestionService.Application.Services;
 using Simcag.IngestionService.Application.UseCases;
 using Simcag.IngestionService.Infrastructure.Dedup;
@@ -41,7 +43,7 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new Microsoft.OpenApi.OpenApiInfo { Title = "SIMC-AG Service", Version = "v1" });
+    c.SwaggerDoc("v1", new Microsoft.OpenApi.OpenApiInfo { Title = "Econdomiza - Ingestion", Version = "v1" });
     c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.OpenApiSecurityScheme
     {
         Name        = "Authorization",
@@ -98,6 +100,14 @@ builder.Services.AddScoped<IIngestionService, IngestionServiceImpl>();
 builder.Services.AddScoped<IProductValidationService, ProductValidationService>();
 builder.Services.AddScoped<IngestionOrchestrator>();
 
+// Document extraction profiles (layout-oriented, not vendor-specific)
+builder.Services.AddScoped<IExtractionProfile, ServiceDiscriminationProfile>();
+builder.Services.AddScoped<IExtractionProfile, TabularProductTableProfile>();
+builder.Services.AddScoped<IExtractionProfile, GluedCondominiumTableProfile>();
+builder.Services.AddScoped<IExtractionProfile, CompactExpenseReportProfile>();
+builder.Services.AddScoped<IExtractionProfile, GenericLineScannerProfile>();
+builder.Services.AddScoped<IDocumentLineExtractor, DocumentLineExtractor>();
+
 // Register Use Cases
 builder.Services.AddScoped<IIngestDocumentUseCase, IngestDocumentUseCase>();
 builder.Services.AddScoped<IExtractTextUseCase, ExtractTextUseCase>();
@@ -142,9 +152,9 @@ builder.Services.AddRabbitMqMessaging(rabbitMqOptions);
 
 var eventsExchange = EventBusConstants.GetEventsExchangeName();
 
-// Register RabbitMQ publisher for Simcag.Shared.Events.RawFinancialDataEvent
-builder.Services.AddRabbitMqEventPublisher<Simcag.Shared.Events.RawFinancialDataEvent>(eventsExchange);
+// Register RabbitMQ publishers (canónico + legado ADR-0001)
 builder.Services.AddRabbitMqEventPublisher<Simcag.Shared.Events.DataIngestedEvent>(eventsExchange);
+builder.Services.AddRabbitMqEventPublisher<Simcag.Shared.Events.RawFinancialDataEvent>(eventsExchange);
 
 builder.Services.AddRabbitMqEventPublisher<Simcag.Shared.Events.PriceCollectedEvent>(eventsExchange);
 }
