@@ -12,10 +12,13 @@ public class IngestionOrchestratorResult
     /// <summary><see cref="Simcag.Shared.Events.DataIngestedEvent"/> — necessário para o Processing persistir despesa / auditoria.</summary>
     public bool PublishedDataIngestedEvent { get; private set; }
 
-    /// <summary>Segundo (ou posterior) upload do mesmo ficheiro para o mesmo tenant: sem reprocessamento.</summary>
+    /// <summary>Segundo (ou posterior) upload do mesmo ficheiro ou NF-e para o mesmo tenant.</summary>
     public bool IsDeduplicatedUpload { get; private set; }
 
     public IngestionDedupEntry? DedupEntry { get; private set; }
+
+    /// <summary><see cref="IngestionDuplicateReasons"/> quando <see cref="IsDeduplicatedUpload"/>.</summary>
+    public string? DuplicateReason { get; private set; }
 
     private IngestionOrchestratorResult() { }
 
@@ -28,14 +31,15 @@ public class IngestionOrchestratorResult
             PublishedDataIngestedEvent = publishedDataIngestedEvent
         };
 
-    public static IngestionOrchestratorResult Duplicate(IngestionDedupEntry entry) =>
+    public static IngestionOrchestratorResult Duplicate(IngestionDedupEntry entry, string reason) =>
         new()
         {
             IsSuccess = true,
             IsDeduplicatedUpload = true,
             DedupEntry = entry,
+            DuplicateReason = reason,
             Document = null,
-            Message = "Mesmo documento já foi ingerido para este tenant (hash idêntico). Retornamos o documento existente.",
+            Message = "Este arquivo já foi enviado para este condomínio (conteúdo idêntico).",
             PublishedDataIngestedEvent = false
         };
 

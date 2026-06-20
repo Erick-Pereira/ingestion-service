@@ -91,6 +91,10 @@ if (redisDedupConn is not null)
     builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisDedupConn));
     builder.Services.AddSingleton<IIngestionUploadDedupStore, IngestionUploadDedupRedisStore>();
 }
+else if (!isTesting)
+{
+    builder.Services.AddSingleton<IIngestionUploadDedupStore, IngestionUploadDedupMemoryStore>();
+}
 else
 {
     builder.Services.AddSingleton<IIngestionUploadDedupStore, IngestionUploadDedupMemoryStore>();
@@ -166,6 +170,12 @@ builder.Services.AddSimcagGatewayAuthentication(builder.Environment);
 builder.Services.AddSimcagProblemDetails();
 
 var app = builder.Build();
+
+if (!isTesting && redisDedupConn is null)
+{
+    app.Logger.LogCritical(
+        "REDIS__CONNECTION ausente: dedupe de upload usa memória volátil; reenvios do mesmo PDF/NF podem criar despesas duplicadas após reinício.");
+}
 
 app.ValidateSimcagGatewayTrustAtStartup();
 

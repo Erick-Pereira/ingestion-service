@@ -23,6 +23,25 @@ public static class ExcludedFieldPatterns
                && u.Contains("SERV", StringComparison.Ordinal);
     }
 
+    /// <summary>Linhas tributárias/ancilares (IPI, ICMS, garantia…) não devem virar item de produto na despesa.</summary>
+    public static bool IsTaxOrAncillaryProductLine(string? desc)
+    {
+        if (string.IsNullOrWhiteSpace(desc))
+            return false;
+
+        var upper = desc.Trim().ToUpperInvariant();
+        string[] taxOnly = ["ICMS", "IPI", "PIS", "COFINS", "ISS", "DIFAL", "FCP", "CSLL", "IRRF", "INSS"];
+        if (taxOnly.Contains(upper))
+            return true;
+
+        string[] tokens =
+        [
+            "GARANTIA", "SEGURO", "FRETE", "ICMS", "IPI", "PIS", "COFINS", "ISS", "TRIBUTO", "IMPOSTO",
+            "VALOR ICMS", "VALOR IPI", "ALÍQ. ICMS", "ALIQ. ICMS",
+        ];
+        return tokens.Any(t => upper.Contains(t, StringComparison.Ordinal));
+    }
+
     public static bool IsDocumentHeaderNoise(string desc)
     {
         if (desc.Length > 240)

@@ -15,6 +15,9 @@ public class ExtractedLineItem
     /// <summary>Valor unitário BRL quando extraído da DANFE.</summary>
     public decimal? UnitPrice { get; private set; }
 
+    /// <summary>SKU/modelo do produto (ex.: PG-VY1-BK) quando identificado na linha.</summary>
+    public string? ItemCode { get; private set; }
+
     protected ExtractedLineItem() { }
 
     public ExtractedLineItem(
@@ -25,7 +28,8 @@ public class ExtractedLineItem
         string rawLine,
         int confidenceScore = 0,
         decimal? quantity = null,
-        decimal? unitPrice = null)
+        decimal? unitPrice = null,
+        string? itemCode = null)
     {
         if (lineNumber < 0)
             throw new ArgumentException("Número da linha deve ser não negativo", nameof(lineNumber));
@@ -41,6 +45,7 @@ public class ExtractedLineItem
         ConfidenceScore = confidenceScore;
         Quantity = quantity is > 0m ? quantity : null;
         UnitPrice = unitPrice is >= 0m ? unitPrice : null;
+        ItemCode = string.IsNullOrWhiteSpace(itemCode) ? null : itemCode.Trim();
     }
 
     public void SetAmount(Money? amount)

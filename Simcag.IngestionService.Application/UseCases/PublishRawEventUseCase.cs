@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Simcag.IngestionService.Application.Configuration;
+using Simcag.IngestionService.Application.DocumentExtraction;
 using Simcag.IngestionService.Domain.Entities;
 using Simcag.IngestionService.Domain.Enums;
 using Simcag.Shared.Events;
@@ -37,7 +38,10 @@ public class PublishRawEventUseCase : IPublishRawEventUseCase
         _publishOptions = publishOptions.Value;
     }
 
-    public async Task<RawEventPublishOutcome> PublishAsync(RawDocument document, CancellationToken cancellationToken = default)
+    public async Task<RawEventPublishOutcome> PublishAsync(
+        RawDocument document,
+        NfeDocumentMetadata? nfeMetadata = null,
+        CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -76,7 +80,7 @@ public class PublishRawEventUseCase : IPublishRawEventUseCase
                     document.Id);
             }
 
-            if (TryBuildDataIngestedEvent(document, out var dataIngested))
+            if (TryBuildDataIngestedEvent(document, nfeMetadata, out var dataIngested))
             {
                 await _dataIngestedPublisher.PublishAsync(dataIngested, cancellationToken);
                 _logger.LogInformation(
@@ -101,7 +105,10 @@ public class PublishRawEventUseCase : IPublishRawEventUseCase
         }
     }
 
-    private static bool TryBuildDataIngestedEvent(RawDocument document, out DataIngestedEvent evt)
+    private static bool TryBuildDataIngestedEvent(
+        RawDocument document,
+        NfeDocumentMetadata? nfeMetadata,
+        out DataIngestedEvent evt)
     {
         evt = default!;
 
@@ -132,7 +139,8 @@ public class PublishRawEventUseCase : IPublishRawEventUseCase
                     : li.Description.Trim(),
                 Amount = li.Amount!.Amount,
                 Quantity = li.Quantity,
-                UnitPrice = li.UnitPrice
+                UnitPrice = li.UnitPrice,
+                ItemCode = li.ItemCode,
             })
             .ToList();
 
@@ -146,6 +154,14 @@ public class PublishRawEventUseCase : IPublishRawEventUseCase
         };
 
         var extra = new Dictionary<string, object?> { ["lineItemCount"] = lines.Count };
+        if (nfeMetadata?.AccessKey is { Length: 44 } accessKey)
+            extra["nfeAccessKey"] = accessKey;
+        if (!string.IsNullOrWhiteSpace(nfeMetadata?.NfeNumber))
+            extra["nfeNumber"] = nfeMetadata.NfeNumber;
+        if (!string.IsNullOrWhiteSpace(nfeMetadata?.NfeSeries))
+            extra["nfeSeries"] = nfeMetadata.NfeSeries;
+        if (!string.IsNullOrWhiteSpace(nfeMetadata?.IssuerTaxId))
+            extra["nfeIssuerTaxId"] = nfeMetadata.IssuerTaxId;
         // Redundância: alguns pipelines deserializam ExtractedFields sem popular Lines; o processing reidrata disto.
         if (lineDtos.Count > 0)
             extra["ingestedLinesJson"] = JsonSerializer.Serialize(lineDtos);
@@ -251,7 +267,16 @@ public class PublishRawEventUseCase : IPublishRawEventUseCase
                 continue;
 
             list.Add(FinancialLineItemSemanticNormalizer.NormalizeFinancialItem(
-                new FinancialItem { Description = desc, Amount = amt }));
+                new FinancialItem
+                {
+                    Description = desc,
+                    Amount = amt,
+                    Quantity = li.Quantity is > 0m
+                        ? (int)Math.Round(li.Quantity.Value, MidpointRounding.AwayFromZero)
+                        : null,
+                    UnitPrice = li.UnitPrice,
+                    ItemCode = li.ItemCode,
+                }));
         }
 
         return list.Count > 0 ? list : null;

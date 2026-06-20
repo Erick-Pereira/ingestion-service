@@ -1,3 +1,4 @@
+using Simcag.IngestionService.Application.DocumentExtraction;
 using Simcag.IngestionService.Domain.Entities;
 using Simcag.IngestionService.Domain.Enums;
 using Simcag.IngestionService.Domain.ValueObjects;
@@ -66,9 +67,9 @@ public class IngestionOrchestrator
             var dedupTenant = NormalizeDedupTenantKey(tenantId);
             if (!forceNewDocument
                 && _uploadDedup is not null
-                && _uploadDedup.TryGet(dedupTenant, fileHash, out var prior))
+                && _uploadDedup.TryGet(dedupTenant, fileHash, out var priorHash))
             {
-                return IngestionOrchestratorResult.Duplicate(prior);
+                return IngestionOrchestratorResult.Duplicate(priorHash, IngestionDuplicateReasons.FileHash);
             }
 
             using var readStream = new MemoryStream(fileBytes, writable: false);
@@ -120,6 +121,8 @@ public class IngestionOrchestrator
 
             document.SetExtractedLineItems(parseResult.LineItems);
 
+            var nfeMeta = NfeDocumentMetadataExtractor.Extract(rawText);
+
             document.MarkAsProcessed();
             _logger.LogInformation(
                 "Documento {DocumentId} processado com {LineCount} itens extraídos",
@@ -133,19 +136,20 @@ public class IngestionOrchestrator
                     new[] { "RawText vazio após processamento" });
             }
 
-            var publishOutcome = await _publishRawEventUseCase.PublishAsync(document, cancellationToken);
+            var publishOutcome = await _publishRawEventUseCase.PublishAsync(document, nfeMeta, cancellationToken);
 
             if (_uploadDedup is not null)
             {
-                _uploadDedup.Remember(
-                    dedupTenant,
-                    fileHash,
-                    new IngestionDedupEntry(
-                        document.Id,
-                        document.TenantId,
-                        document.DocumentType.ToString(),
-                        document.ExtractedLineItems.Count,
-                        publishOutcome.DataIngestedEventPublished));
+                var dedupEntry = new IngestionDedupEntry(
+                    DocumentId: document.Id,
+                    TenantId: document.TenantId,
+                    DocumentType: document.DocumentType.ToString(),
+                    ExtractedItemCount: document.ExtractedLineItems.Count,
+                    PublishedDataIngestedEvent: publishOutcome.DataIngestedEventPublished,
+                    FileHash: fileHash.Value);
+
+                _uploadDedup.Remember(dedupTenant, fileHash, dedupEntry);
+                _uploadDedup.RememberDocumentIndex(document.Id, dedupEntry);
             }
 
             return IngestionOrchestratorResult.Success(document, publishOutcome.DataIngestedEventPublished);

@@ -17,25 +17,30 @@ public sealed class IngestionUploadDedupMemoryStore : IIngestionUploadDedupStore
         _log = log;
     }
 
-    public bool TryGet(string tenantId, FileHash fileHash, out IngestionDedupEntry entry)
+    public bool TryGet(string tenantId, FileHash fileHash, out IngestionDedupEntry entry) =>
+        TryGetKey(IngestionUploadDedupKeys.Build(tenantId, fileHash), out entry);
+
+    public void Remember(string tenantId, FileHash fileHash, IngestionDedupEntry entry) =>
+        SetKey(IngestionUploadDedupKeys.Build(tenantId, fileHash), entry);
+
+    public void RememberDocumentIndex(string documentId, IngestionDedupEntry entry) =>
+        SetKey(IngestionUploadDedupKeys.BuildDocumentIndex(documentId), entry);
+
+    private bool TryGetKey(string key, out IngestionDedupEntry entry)
     {
         entry = default!;
-        var key = IngestionUploadDedupKeys.Build(tenantId, fileHash);
         if (!_cache.TryGetValue(key, out IngestionDedupEntry? cached) || cached is null)
             return false;
 
         entry = cached;
         _log.LogInformation(
-            "Upload deduplicado: tenant {TenantId}, hash {HashPrefix}… → documento {DocumentId}",
-            tenantId,
-            fileHash.Value.Length >= 12 ? fileHash.Value[..12] : fileHash.Value,
+            "Upload deduplicado (memória): documento {DocumentId}",
             entry.DocumentId);
         return true;
     }
 
-    public void Remember(string tenantId, FileHash fileHash, IngestionDedupEntry entry)
+    private void SetKey(string key, IngestionDedupEntry entry)
     {
-        var key = IngestionUploadDedupKeys.Build(tenantId, fileHash);
         _cache.Set(key, entry, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = Ttl });
     }
 }

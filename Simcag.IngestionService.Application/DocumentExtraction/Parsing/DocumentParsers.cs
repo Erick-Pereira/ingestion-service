@@ -471,19 +471,14 @@ internal static class DocumentParsers
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var row in ExtractAllDanfeProductRows(section))
         {
+            if (ExcludedFieldPatterns.IsTaxOrAncillaryProductLine(row.description))
+                continue;
+
             var key = $"{row.total:0.00}|{row.description}";
             if (!seen.Add(key))
                 continue;
 
-            list.Add(new ExtractedLineItem(
-                lineNumber: lineNo++,
-                amount: new Money(row.total, "BRL"),
-                date: null,
-                description: row.description,
-                rawLine: row.rawLine,
-                confidenceScore: 88,
-                quantity: row.quantity,
-                unitPrice: row.unitPrice));
+            list.Add(CreateExtractedLineItem(row, lineNo++, confidenceScore: 88));
         }
 
         if (list.Count >= 1)
@@ -491,19 +486,14 @@ internal static class DocumentParsers
 
         foreach (var row in TryExtractLooseDanfeProductRows(section))
         {
+            if (ExcludedFieldPatterns.IsTaxOrAncillaryProductLine(row.description))
+                continue;
+
             var key = $"{row.total:0.00}|{row.description}";
             if (!seen.Add(key))
                 continue;
 
-            list.Add(new ExtractedLineItem(
-                lineNumber: lineNo++,
-                amount: new Money(row.total, "BRL"),
-                date: null,
-                description: row.description,
-                rawLine: row.rawLine,
-                confidenceScore: 80,
-                quantity: row.quantity,
-                unitPrice: row.unitPrice));
+            list.Add(CreateExtractedLineItem(row, lineNo++, confidenceScore: 80));
         }
 
         if (list.Count >= 1)
@@ -542,7 +532,23 @@ internal static class DocumentParsers
         string description,
         decimal quantity,
         decimal? unitPrice,
-        string rawLine);
+        string rawLine,
+        string? itemCode = null);
+
+    private static ExtractedLineItem CreateExtractedLineItem(
+        TabularProductRow row,
+        int lineNumber,
+        int confidenceScore) =>
+        new(
+            lineNumber,
+            new Money(row.total, "BRL"),
+            null,
+            row.description,
+            row.rawLine,
+            confidenceScore,
+            row.quantity,
+            row.unitPrice,
+            row.itemCode);
 
     internal static IEnumerable<TabularProductRow> ExtractAllDanfeProductRows(string section)
     {
@@ -577,12 +583,14 @@ internal static class DocumentParsers
         {
             if (TryParseDanfeProductRow(piece, out var total, out var desc, out var qty, out var unitPrice))
             {
+                var rawPiece = piece.Length > 400 ? piece[..400] : piece;
                 results.Add(new TabularProductRow(
                     total,
                     desc,
                     qty,
                     unitPrice,
-                    piece.Length > 400 ? piece[..400] : piece));
+                    rawPiece,
+                    ResolveProductSku(desc, rawPiece)));
             }
         }
 
@@ -627,14 +635,21 @@ internal static class DocumentParsers
         var repaired = FinancialLineItemSemanticNormalizer.Repair(desc, total);
         desc = string.IsNullOrWhiteSpace(repaired.CleanDescription) ? desc : repaired.CleanDescription;
 
+        var rawLine = m.Value.Length > 400 ? m.Value[..400] : m.Value;
+        var itemCode = ResolveProductSku(desc, m.Groups["desc"].Value, rawLine);
+
         row = new TabularProductRow(
             total,
             desc,
             qty,
             unitPrice,
-            m.Value.Length > 400 ? m.Value[..400] : m.Value);
+            rawLine,
+            itemCode);
         return true;
     }
+
+    internal static string? ResolveProductSku(params string?[] sources) =>
+        ProductCodeHelper.TryExtractFirst(sources);
 
     internal static readonly Regex DanfeProductCodeRegex = new(
         @"^(?:[A-Z]{2,4}\d{2,3}|\d{3,6})$",
@@ -821,6 +836,67 @@ internal static class DocumentParsers
         return op.Length >= 6 ? op : null;
     }
 
+    /// <summary>Chave de acesso NF-e (44 dígitos) após o rótulo DANFE.</summary>
+    internal static string? TryExtractNfeAccessKey(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        var u = text.ToUpperInvariant();
+        var idx = u.IndexOf("CHAVE DE ACESSO", StringComparison.Ordinal);
+        if (idx < 0)
+            return null;
+
+        var slice = text[idx..];
+        var digits = new string(slice.Where(char.IsDigit).Take(44).ToArray());
+        return digits.Length == 44 ? digits : null;
+    }
+
+    internal static string? TryExtractDanfeNfeNumber(string text)
+    {
+        var m = Regex.Match(
+            text,
+            @"NF-?e\s*N[ºo°\.]*\s*(?<num>\d{1,9})",
+            RegexOptions.IgnoreCase);
+        if (!m.Success)
+            return null;
+        var num = m.Groups["num"].Value.Trim();
+        return num.Length > 0 ? num.PadLeft(9, '0') : null;
+    }
+
+    internal static string? TryExtractDanfeNfeSeries(string text)
+    {
+        var m = Regex.Match(
+            text,
+            @"S[ée]rie\s*(?<ser>\d{1,3})",
+            RegexOptions.IgnoreCase);
+        if (!m.Success)
+            return null;
+        return m.Groups["ser"].Value.Trim();
+    }
+
+    internal static string? TryExtractDanfeIssuerTaxId(string text)
+    {
+        var m = Regex.Match(
+            text,
+            @"CNPJ\s*/\s*CPF\s*(?<doc>[\d\.\-/]+)",
+            RegexOptions.IgnoreCase);
+        if (!m.Success)
+            return null;
+
+        var digits = new string(m.Groups["doc"].Value.Where(char.IsDigit).ToArray());
+        return digits.Length is 11 or 14 ? digits : null;
+    }
+
+    internal static string? TryBuildNfeFallbackCompositeKey(string? issuerTaxId, string? nfeNumber, string? nfeSeries)
+    {
+        if (string.IsNullOrWhiteSpace(issuerTaxId) || string.IsNullOrWhiteSpace(nfeNumber))
+            return null;
+
+        var series = string.IsNullOrWhiteSpace(nfeSeries) ? "0" : nfeSeries.Trim();
+        return $"{issuerTaxId.Trim()}:{nfeNumber.Trim()}:{series}";
+    }
+
     internal static bool TryParseDanfeQuantity(string raw, out decimal qty)
     {
         qty = 0m;
@@ -916,12 +992,14 @@ internal static class DocumentParsers
             var repaired = FinancialLineItemSemanticNormalizer.Repair(desc, lineTotal);
             desc = string.IsNullOrWhiteSpace(repaired.CleanDescription) ? desc : repaired.CleanDescription;
 
+            var rawLine = m.Value.Length > 400 ? m.Value[..400] : m.Value;
             yield return new TabularProductRow(
                 lineTotal,
                 desc,
                 qty,
                 unitPrice,
-                m.Value.Length > 400 ? m.Value[..400] : m.Value);
+                rawLine,
+                ResolveProductSku(desc, m.Groups["desc"].Value, rawLine));
         }
     }
 
@@ -993,6 +1071,16 @@ internal static class DocumentParsers
         for (var i = 0; i < lines.Count; i++)
         {
             var line = lines[i];
+            if (Regex.IsMatch(line, @"^PG-[A-Z0-9]+-[A-Z0-9]+$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)
+                && merged.Count > 0
+                && i + 1 < lines.Count
+                && Regex.IsMatch(lines[i + 1], @"^\d{8}\b", RegexOptions.CultureInvariant))
+            {
+                merged[^1] = $"{merged[^1]} {line} {lines[i + 1]}";
+                i++;
+                continue;
+            }
+
             if (i + 1 < lines.Count
                 && Regex.IsMatch(line, @"^(?:[A-Z]{2,4}\d{2,3}|\d{4,6})\s+[A-Za-zÀ-ÿ]", RegexOptions.CultureInvariant)
                 && Regex.IsMatch(lines[i + 1], @"^\d{8}\b", RegexOptions.CultureInvariant))

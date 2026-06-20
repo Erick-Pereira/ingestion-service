@@ -33,6 +33,7 @@ public class IngestionController : ControllerBase
     [DisableRequestSizeLimit]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> UploadDocument(
         [FromForm] DocumentUploadForm form,
@@ -100,23 +101,25 @@ public class IngestionController : ControllerBase
             {
                 var d = result.DedupEntry;
                 _logger.LogInformation(
-                    "Upload deduplicado para {FileName} → documento existente {DocumentId}",
+                    "Upload deduplicado para {FileName} → documento existente {DocumentId} ({Reason})",
                     file.FileName,
-                    d.DocumentId);
+                    d.DocumentId,
+                    result.DuplicateReason);
 
-                return Ok(new
+                return Conflict(new
                 {
-                    success = true,
+                    success = false,
                     deduplicated = true,
+                    reason = result.DuplicateReason ?? IngestionDuplicateReasons.FileHash,
                     message = result.Message,
                     documentId = d.DocumentId,
+                    expenseId = d.ExpenseId,
                     tenantId = d.TenantId,
                     documentType = d.DocumentType,
                     extractedItems = d.ExtractedItemCount,
-                    publishedRawFinancialEvent = false,
                     publishedDataIngestedEvent = false,
                     processingNote =
-                        "Mesmo PDF e tenant que um upload anterior: não republicámos eventos. O documentId é o da primeira ingestão bem-sucedida. Use Force=true no formulário para ingerir de novo como cópia independente."
+                        "Esta nota já foi enviada. Use Force=true no formulário apenas para reprocessar como cópia independente."
                 });
             }
 
